@@ -1,0 +1,18 @@
+{
+    "name": "Disciplines",
+    "code": "DISCIPLINES",
+    "version": "1.0.0",
+    "description": "Disciplinas deportivas, niveles y biblioteca de recursos",
+    "entry": {
+        "api": "modules/disciplines/server/index.ts",
+        "ui": "modules/disciplines/client/DisciplineModule.tsx"
+    },
+    "migrations": [
+        "migrations/001_init_disciplines.sql"
+    ],
+    "api": {
+        "basePath": "/api/disciplines",
+        "openapiPath": "/api/disciplines/openapi.json",
+        "docsPath": "/api/disciplines/docs"
+    }
+}

@@ -1,0 +1,18 @@
+{
+    "name": "Communities",
+    "code": "COMMUNITIES",
+    "version": "1.0.0",
+    "description": "Comunidades de alumnos con miembros y publicaciones",
+    "entry": {
+        "api": "modules/communities/server/index.ts",
+        "ui": "modules/communities/client/CommunityModule.tsx"
+    },
+    "migrations": [
+        "migrations/001_init_communities.sql"
+    ],
+    "api": {
+        "basePath": "/api/communities",
+        "openapiPath": "/api/communities/openapi.json",
+        "docsPath": "/api/communities/docs"
+    }
+}

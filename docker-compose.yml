@@ -1,0 +1,18 @@
+name: ${COMPOSE_PROJECT_NAME:-sinapsisapp}
+
+services:
+  db:
+    container_name: ${COMPOSE_PROJECT_NAME:-sinapsisapp}-db
+    image: postgres:15-alpine
+    restart: always
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=${COMPOSE_PROJECT_NAME:-sinapsisapp}_db
+    ports:
+      - "${COMPOSE_PROJECT_PORT:-15432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:
