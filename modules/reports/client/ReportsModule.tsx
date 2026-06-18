@@ -119,6 +119,7 @@ interface ReportRow {
   id: string;
   studentId: string;
   studentName: string;
+  studentAvatarUrl?: string | null;
   authorId: string;
   authorName?: string | null;
   authorAvatarUrl?: string | null;
@@ -163,7 +164,17 @@ function timeAgo(v?: string | null) {
   if (h < 24) return `hace ${h}h`;
   const d = Math.floor(h / 24);
   if (d < 7)  return `hace ${d}d`;
-  return new Date(Date.parse(v)).toLocaleDateString('es-AR', { day: '2-digit', month: 'short' });
+  const w = Math.floor(d / 7);
+  if (w < 5)  return `hace ${w} sem`;
+  const mo = Math.floor(d / 30);
+  return `hace ${mo} mes${mo !== 1 ? 'es' : ''}`;
+}
+
+function formatDateTime(v?: string | null) {
+  if (!v) return '';
+  const d = new Date(Date.parse(v));
+  if (isNaN(d.getTime())) return '';
+  return d.toLocaleString('es-AR', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
 // ── Module ────────────────────────────────────────────────────────────────────
@@ -273,9 +284,12 @@ const ReportsModule: React.FC<Props> = ({ companyId }) => {
         header: ({ column }) => <DataGridColumnHeader column={column} title="Alumno" />,
         cell: ({ row: { original: r } }) => (
           <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-blue-50 text-sm font-bold text-blue-500">
-              {initials(r.studentName)}
-            </div>
+            {r.studentAvatarUrl
+              ? <img src={r.studentAvatarUrl} alt="" className="h-9 w-9 flex-shrink-0 rounded-xl object-cover" />
+              : <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-blue-50 text-sm font-bold text-blue-500">
+                  {initials(r.studentName)}
+                </div>
+            }
             <div>
               <p className="text-sm font-semibold text-foreground">{r.studentName}</p>
               {r.companyName && <p className="text-[11px] text-muted-foreground">{r.companyName}</p>}
@@ -312,16 +326,6 @@ const ReportsModule: React.FC<Props> = ({ companyId }) => {
         )
       },
       {
-        id: 'status',
-        accessorFn: (r) => r.status,
-        header: ({ column }) => <DataGridColumnHeader column={column} title={t('reports.status')} />,
-        cell: ({ row: { original: r } }) => (
-          <span className={cn('inline-flex rounded-full px-2.5 py-0.5 text-[11px] font-semibold', STATUS_STYLES[r.status] ?? STATUS_STYLES.DRAFT)}>
-            {STATUS_LABELS[r.status] ?? r.status}
-          </span>
-        )
-      },
-      {
         id: 'rating',
         accessorFn: (r) => r.rating ?? 0,
         header: ({ column }) => <DataGridColumnHeader column={column} title={t('reports.rating')} />,
@@ -333,8 +337,24 @@ const ReportsModule: React.FC<Props> = ({ companyId }) => {
         id: 'date',
         accessorFn: (r) => r.publishedAt ?? r.createdAt,
         header: ({ column }) => <DataGridColumnHeader column={column} title="Fecha" />,
+        cell: ({ row: { original: r } }) => {
+          const v = r.publishedAt ?? r.createdAt;
+          return (
+            <div>
+              <p className="text-xs font-medium text-foreground">{formatDateTime(v)}</p>
+              <p className="text-[11px] text-muted-foreground">{timeAgo(v)}</p>
+            </div>
+          );
+        }
+      },
+      {
+        id: 'status',
+        accessorFn: (r) => r.status,
+        header: ({ column }) => <DataGridColumnHeader column={column} title={t('reports.status')} />,
         cell: ({ row: { original: r } }) => (
-          <span className="text-xs text-muted-foreground">{timeAgo(r.publishedAt ?? r.createdAt)}</span>
+          <span className={cn('inline-flex rounded-full px-2.5 py-0.5 text-[11px] font-semibold', STATUS_STYLES[r.status] ?? STATUS_STYLES.DRAFT)}>
+            {STATUS_LABELS[r.status] ?? r.status}
+          </span>
         )
       },
       {

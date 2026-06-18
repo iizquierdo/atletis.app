@@ -11,10 +11,13 @@ const moduleDefinition: ModuleClientDefinition = {
   },
   views: {
     Parents: ({ setView, currentUser, companyId, onSubTitleChange }) =>
-      React.createElement(ParentsModule, { view: 'list', setView, currentUser, companyId, onSubTitleChange })
+      React.createElement(ParentsModule, { view: 'list', setView, currentUser, companyId, onSubTitleChange }),
+    ParentDetails: ({ setView, currentUser, companyId, onSubTitleChange, recordId }) =>
+      React.createElement(ParentsModule, { view: 'details', setView, currentUser, companyId, onSubTitleChange, recordId })
   },
   routes: [
-    { view: 'Parents', path: 'parents' }
+    { view: 'Parents', path: 'parents' },
+    { view: 'ParentDetails', path: 'parents/:id' }
   ],
   sidebarSections: [
     {
@@ -23,7 +26,8 @@ const moduleDefinition: ModuleClientDefinition = {
     }
   ],
   breadcrumbs: {
-    Parents: { main: 'parents.title', sub: 'parents.list' }
+    Parents: { main: 'parents.title', sub: 'parents.list' },
+    ParentDetails: { main: 'parents.title', sub: 'parents.details', listTarget: 'Parents' }
   },
   translations: PARENTS_TRANSLATIONS
 };

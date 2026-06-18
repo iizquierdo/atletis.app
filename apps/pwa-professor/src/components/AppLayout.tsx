@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { MaterialIcon } from "./MaterialIcon";
 import { useAuth } from "../context/AuthContext";
+import { resolveMediaUrl } from "../lib/media";
 import { fetchPublicBranding } from "../lib/data";
 import { applyDocumentTitle, readBrandingFromStorage, saveBrandingToStorage } from "../lib/branding";
 import { applyThemeFromSettings } from "../lib/theme";
@@ -27,6 +28,7 @@ export const AppLayout = () => {
   const [branding, setBranding] = useState(() => readBrandingFromStorage());
   const [logoLoadFailed, setLogoLoadFailed] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [avatarLoadFailed, setAvatarLoadFailed] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
   const isoSrc = branding.isologoUrl ?? branding.logoUrl ?? null;
@@ -35,7 +37,11 @@ export const AppLayout = () => {
   const initials = user
     ? `${user.firstName.charAt(0)}${user.lastName.charAt(0)}`.toUpperCase()
     : "?";
-  const avatarUrl = user?.avatarUrl ?? null;
+  const avatarUrl = user?.avatarUrl ? resolveMediaUrl(user.avatarUrl) : null;
+
+  useEffect(() => {
+    setAvatarLoadFailed(false);
+  }, [avatarUrl]);
 
   useEffect(() => {
     let cancelled = false;
@@ -132,15 +138,21 @@ export const AppLayout = () => {
             <div className="relative" ref={menuRef}>
               <button
                 aria-label="Menú de usuario"
-                className="ml-1 flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-[var(--primary)] text-xs font-bold text-white shadow-sm transition-opacity hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-[var(--primary)] focus:ring-offset-1"
+                className="relative ml-1 flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-[var(--primary)] text-xs font-bold text-white shadow-sm transition-opacity hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-[var(--primary)] focus:ring-offset-1"
                 onClick={() => setMenuOpen((v) => !v)}
                 type="button"
               >
-                {avatarUrl ? (
-                  <img src={avatarUrl} alt={initials} className="h-full w-full object-cover" />
-                ) : (
-                  initials
-                )}
+                <span className={avatarUrl && !avatarLoadFailed ? "sr-only" : undefined}>
+                  {initials}
+                </span>
+                {avatarUrl && !avatarLoadFailed ? (
+                  <img
+                    src={avatarUrl}
+                    alt=""
+                    className="absolute inset-0 h-full w-full object-cover"
+                    onError={() => setAvatarLoadFailed(true)}
+                  />
+                ) : null}
               </button>
 
               {menuOpen && (

@@ -36,6 +36,7 @@ import {
   reserveNextReference,
   putObject,
   getObjectStream,
+  findLatestUserAvatarKey,
   type TenantAuthContext
 } from '@sinapsis/module-sdk-server';
 import {
@@ -624,7 +625,8 @@ const getNormalizedUserById = async (id: string) => {
     if (!user) return null;
 
     const extraResult = await pool.query(
-        `SELECT u."language", u."accessCompanyIds", o."defaultLanguage" AS "organizationDefaultLanguage"
+        `SELECT u."language", u."accessCompanyIds", u.avatar, u."imageUrl", u."coverUrl",
+                o."defaultLanguage" AS "organizationDefaultLanguage"
            FROM "User" u
            LEFT JOIN "Company" c ON c.id = u."companyId"
            LEFT JOIN "Organization" o ON o.id = c."organizationId"
@@ -634,8 +636,28 @@ const getNormalizedUserById = async (id: string) => {
     );
     const extra = extraResult.rows[0];
 
+    let avatar = extra?.avatar ?? user.avatar ?? null;
+    const imageUrl = extra?.imageUrl ?? null;
+    const coverUrl = extra?.coverUrl ?? null;
+    const orgId = user.company?.organizationId;
+    if (!String(avatar || '').trim() && orgId) {
+        const orgResult = await pool.query('SELECT name, id FROM "Organization" WHERE id = $1 LIMIT 1', [orgId]);
+        const org = orgResult.rows[0];
+        if (org?.name && org?.id) {
+            const orgFolderName = `${String(org.name).replace(/[^a-z0-9]/gi, '_').toLowerCase()}_${String(org.id).split('-')[0]}`;
+            const recoveredKey = await findLatestUserAvatarKey(pool, orgFolderName, id);
+            if (recoveredKey) {
+                avatar = `/storage/${recoveredKey}`;
+                void pool.query('UPDATE "User" SET avatar = $1, "updatedAt" = NOW() WHERE id = $2', [avatar, id]);
+            }
+        }
+    }
+
     return {
         ...user,
+        avatar,
+        imageUrl,
+        coverUrl,
         language: extra?.language || null,
         organizationDefaultLanguage: extra?.organizationDefaultLanguage || null,
         accessCompanyIds: parseAccessCompanyIds(extra?.accessCompanyIds)

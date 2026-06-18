@@ -68,6 +68,7 @@ export default function registerReportsModule({ app, pool }: ReportsModuleContex
   const SELECT_COLS = `
     r.*,
     (s."firstName" || ' ' || s."lastName") AS "studentName",
+    s."imageUrl" AS "studentAvatarUrl",
     a.name AS "authorName",
     COALESCE(a."imageUrl", a.avatar) AS "authorAvatarUrl",
     c.name AS "companyName"
@@ -79,6 +80,19 @@ export default function registerReportsModule({ app, pool }: ReportsModuleContex
     JOIN "User" a ON a.id = r."authorId"
     LEFT JOIN "Company" c ON c.id = s."companyId"
   `;
+
+  const professorStudentScopeSql = (teacherParam: string) => `(
+    EXISTS (SELECT 1 FROM "StudentTeacher" st WHERE st."studentId" = s.id AND st."teacherId" = ${teacherParam} AND st.active)
+    OR (
+      to_regclass('public."ClassTeacher"') IS NOT NULL
+      AND to_regclass('public."ClassStudent"') IS NOT NULL
+      AND EXISTS (
+        SELECT 1 FROM "ClassStudent" cs
+        JOIN "ClassTeacher" ct ON ct."classId" = cs."classId" AND ct."teacherId" = ${teacherParam} AND ct.active = true
+        WHERE cs."studentId" = s.id AND cs.status = 'ACTIVE'
+      )
+    )
+  )`;
 
   // ── /meta/students must come BEFORE /:id ─────────────────────────────────
   router.get('/meta/students', async (req, res) => {
@@ -97,7 +111,7 @@ export default function registerReportsModule({ app, pool }: ReportsModuleContex
         conditions.push(`s."companyId" = ANY($${params.length})`);
       } else if (scope.isProfesor) {
         params.push(scope.userId);
-        conditions.push(`EXISTS (SELECT 1 FROM "StudentTeacher" st WHERE st."studentId" = s.id AND st."teacherId" = $${params.length} AND st.active)`);
+        conditions.push(professorStudentScopeSql(`$${params.length}`));
       } else {
         return res.json([]);
       }
@@ -132,7 +146,7 @@ export default function registerReportsModule({ app, pool }: ReportsModuleContex
         conditions.push(`s."companyId" = ANY($${params.length})`);
       } else if (scope.isProfesor) {
         params.push(scope.userId);
-        conditions.push(`EXISTS (SELECT 1 FROM "StudentTeacher" st WHERE st."studentId" = s.id AND st."teacherId" = $${params.length} AND st.active)`);
+        conditions.push(professorStudentScopeSql(`$${params.length}`));
       } else {
         return res.status(403).json({ error: 'Access denied.' });
       }
@@ -190,7 +204,15 @@ export default function registerReportsModule({ app, pool }: ReportsModuleContex
       if (!title)     return res.status(400).json({ error: 'title is required.' });
 
       if (!scope.isStaff) {
-        const check = await pool.query('SELECT 1 FROM "StudentTeacher" WHERE "studentId"=$1 AND "teacherId"=$2 AND active LIMIT 1', [studentId, scope.userId]);
+        const check = await pool.query(
+          `SELECT 1 FROM "StudentTeacher" WHERE "studentId"=$1 AND "teacherId"=$2 AND active LIMIT 1
+           UNION ALL
+           SELECT 1 FROM "ClassStudent" cs
+           JOIN "ClassTeacher" ct ON ct."classId" = cs."classId" AND ct."teacherId" = $2 AND ct.active = true
+           WHERE cs."studentId" = $1 AND cs.status = 'ACTIVE'
+           LIMIT 1`,
+          [studentId, scope.userId]
+        );
         if (!check.rows.length) return res.status(403).json({ error: 'Student out of scope.' });
       }
 

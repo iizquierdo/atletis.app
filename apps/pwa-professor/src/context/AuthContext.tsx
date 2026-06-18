@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { api } from "../lib/api";
-import { mapAuthUser } from "../lib/data";
+import { mapAuthUser, enrichAuthUser } from "../lib/data";
 import { tokenStorage } from "../lib/token-storage";
 import type { AuthUser } from "../types";
 
@@ -41,7 +41,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         return;
       }
       setToken(savedToken);
-      setUser(mapAuthUser(data.user));
+      setUser(await enrichAuthUser(mapAuthUser(data.user)));
     } catch {
       logout();
     } finally {
@@ -53,6 +53,16 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     void refreshProfile();
   }, [refreshProfile]);
 
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === "visible" && tokenStorage.get()) {
+        void refreshProfile();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [refreshProfile]);
+
   const login = useCallback(async (email: string, password: string, persistent = true) => {
     const { data } = await api.post<{ token: string; user: unknown }>("/auth/login", {
       email: email.toLowerCase(),
@@ -61,7 +71,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
     tokenStorage.set(data.token, persistent);
     setToken(data.token);
-    setUser(mapAuthUser(data.user));
+    setUser(await enrichAuthUser(mapAuthUser(data.user)));
   }, []);
 
   const value = useMemo<AuthContextValue>(

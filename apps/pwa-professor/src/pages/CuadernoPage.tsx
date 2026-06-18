@@ -1,11 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { CustomSelect } from "../components/CustomSelect";
 import { MaterialIcon } from "../components/MaterialIcon";
-import { fetchStudents, fetchReports, createReport } from "../lib/data";
+import { RatingDisplay, RatingPicker } from "../components/RatingPicker";
+import { StudentInfoCard, studentLabel } from "../components/StudentInfoCard";
+import { fetchStudents, fetchStudentDetail, fetchReports, createReport } from "../lib/data";
 import { extractErrorMessage } from "../lib/api";
 import type { StudentSummary, StudentReport } from "../types";
-
-const getInitials = (s: StudentSummary) =>
-  `${s.firstName.charAt(0)}${s.lastName.charAt(0)}`.toUpperCase();
 
 const formatDate = (iso?: string | null) => {
   if (!iso) return "";
@@ -58,14 +58,24 @@ const STATUS_LABELS: Record<string, string> = {
   ARCHIVED: "Archivado"
 };
 
+const emptyReportForm = () => ({
+  type: "PROGRESS",
+  title: "",
+  content: "",
+  status: "PUBLISHED",
+  rating: 0,
+  ratingTheme: "stars"
+});
+
 export const CuadernoPage = () => {
   const [students, setStudents] = useState<StudentSummary[]>([]);
   const [reports, setReports] = useState<Record<string, StudentReport[]>>({});
-  const [selected, setSelected] = useState<StudentSummary | null>(null);
+  const [selectedId, setSelectedId] = useState("");
+  const [studentDetail, setStudentDetail] = useState<StudentSummary | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [reportsLoading, setReportsLoading] = useState(false);
-  const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ type: "PROGRESS", title: "", content: "", status: "PUBLISHED" });
+  const [form, setForm] = useState(emptyReportForm);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [fetchError, setFetchError] = useState<string | null>(null);
@@ -84,6 +94,23 @@ export const CuadernoPage = () => {
     };
     void load();
   }, []);
+
+  const selected = students.find((st) => st.id === selectedId) ?? null;
+  const cardStudent = studentDetail ?? selected;
+
+  useEffect(() => {
+    if (!selectedId) {
+      setStudentDetail(null);
+      return;
+    }
+    setDetailLoading(true);
+    fetchStudentDetail(selectedId)
+      .then(setStudentDetail)
+      .catch(() => {
+        setStudentDetail(students.find((st) => st.id === selectedId) ?? null);
+      })
+      .finally(() => setDetailLoading(false));
+  }, [selectedId, students]);
 
   useEffect(() => {
     if (!selected) return;
@@ -105,8 +132,7 @@ export const CuadernoPage = () => {
     try {
       const report = await createReport(selected.id, form);
       setReports((prev) => ({ ...prev, [selected.id]: [report, ...(prev[selected.id] ?? [])] }));
-      setShowForm(false);
-      setForm({ type: "PROGRESS", title: "", content: "", status: "PUBLISHED" });
+      setForm(emptyReportForm());
     } catch (err: unknown) {
       setSubmitError(extractErrorMessage(err));
     } finally {
@@ -115,6 +141,18 @@ export const CuadernoPage = () => {
   };
 
   const studentReports = selected ? (reports[selected.id] ?? []) : [];
+
+  const studentOptions = useMemo(
+    () => students.map((st) => ({ value: st.id, label: studentLabel(st) })),
+    [students]
+  );
+
+  const handleStudentChange = (id: string) => {
+    setSelectedId(id);
+    setStudentDetail(null);
+    setForm(emptyReportForm());
+    setSubmitError(null);
+  };
 
   if (loading) {
     return (
@@ -137,137 +175,113 @@ export const CuadernoPage = () => {
 
       {/* Student selector */}
       <div className="mb-4 rounded-3xl bg-white p-4 shadow-[0_4px_20px_rgb(0,0,0,0.04)]">
-        <h2 className="mb-3 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+        <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
           Seleccioná un alumno
-        </h2>
-        <div className="flex gap-3 overflow-x-auto pb-1 scrollbar-none">
-          {students.map((st) => (
-            <button
-              key={st.id}
-              type="button"
-              onClick={() => { setSelected(st); setShowForm(false); }}
-              className="flex shrink-0 flex-col items-center gap-1"
-            >
-              <span
-                className={`flex h-12 w-12 items-center justify-center rounded-xl text-sm font-bold transition-all ${
-                  selected?.id === st.id
-                    ? "bg-[var(--primary)] text-white shadow-md"
-                    : "bg-slate-100 text-slate-500"
-                }`}
-              >
-                {getInitials(st)}
-              </span>
-              <span className={`text-[10px] font-semibold ${selected?.id === st.id ? "text-[var(--primary)]" : "text-slate-400"}`}>
-                {st.firstName}
-              </span>
-            </button>
-          ))}
-        </div>
+        </p>
+        <CustomSelect
+          options={studentOptions}
+          value={selectedId}
+          onChange={handleStudentChange}
+          placeholder="Elegí un alumno..."
+        />
       </div>
 
       {/* Selected student panel */}
       {selected && (
         <>
-          {/* Student info + new report button */}
-          <div className="mb-4 flex items-center justify-between rounded-2xl bg-[var(--primary-softer)] px-4 py-3">
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-widest text-[var(--primary)]">Alumno</p>
-              <p className="mt-0.5 font-bold text-slate-900">{selected.firstName} {selected.lastName}</p>
-            </div>
-            <button
-              type="button"
-              onClick={() => setShowForm((v) => !v)}
-              className="flex items-center gap-1.5 rounded-full bg-[var(--primary)] px-3 py-2 text-xs font-semibold text-white"
-            >
-              <MaterialIcon name={showForm ? "close" : "add"} className="text-sm" />
-              {showForm ? "Cancelar" : "Nuevo informe"}
-            </button>
-          </div>
+          <StudentInfoCard student={cardStudent} loading={detailLoading} className="mb-4" />
 
           {/* New report form */}
-          {showForm && (
-            <div className="mb-4 rounded-3xl bg-white p-4 shadow-[0_8px_30px_rgb(0,0,0,0.08)]">
-              <h3 className="mb-3 text-sm font-bold text-slate-700">
-                Nuevo informe — {selected.firstName}
-              </h3>
+          <div className="mb-4 rounded-3xl bg-white p-4 shadow-[0_8px_30px_rgb(0,0,0,0.08)]">
+            <h3 className="mb-3 text-sm font-bold text-slate-700">
+              Nuevo informe — {selected.firstName}
+            </h3>
 
-              {/* Type */}
-              <div className="mb-3">
-                <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-                  Tipo de informe
-                </label>
-                <div className="flex flex-wrap gap-2">
-                  {REPORT_TYPES.map((rt) => (
-                    <button
-                      key={rt.value}
-                      type="button"
-                      onClick={() => setForm((f) => ({ ...f, type: rt.value }))}
-                      className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
-                        form.type === rt.value
-                          ? "bg-[var(--primary)] text-white"
-                          : "bg-slate-100 text-slate-500 hover:bg-slate-200"
-                      }`}
-                    >
-                      {rt.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Title */}
-              <input
-                type="text"
-                placeholder="Título del informe..."
-                value={form.title}
-                onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
-                className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-[var(--primary)] focus:bg-white"
-              />
-
-              {/* Content */}
-              <textarea
-                placeholder="Describe el progreso, observaciones o notas sobre el alumno..."
-                value={form.content}
-                onChange={(e) => setForm((f) => ({ ...f, content: e.target.value }))}
-                rows={5}
-                className="mt-2 w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-[var(--primary)] focus:bg-white"
-              />
-
-              {/* Status */}
-              <div className="mt-3 flex gap-2">
-                {["PUBLISHED", "DRAFT"].map((s) => (
+            <div className="mb-3">
+              <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                Tipo de informe
+              </label>
+              <div className="flex flex-wrap gap-2">
+                {REPORT_TYPES.map((rt) => (
                   <button
-                    key={s}
+                    key={rt.value}
                     type="button"
-                    onClick={() => setForm((f) => ({ ...f, status: s }))}
-                    className={`rounded-full px-3 py-1.5 text-xs font-semibold ${
-                      form.status === s
+                    onClick={() => setForm((f) => ({ ...f, type: rt.value }))}
+                    className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
+                      form.type === rt.value
                         ? "bg-[var(--primary)] text-white"
-                        : "bg-slate-100 text-slate-500"
+                        : "bg-slate-100 text-slate-500 hover:bg-slate-200"
                     }`}
                   >
-                    {s === "PUBLISHED" ? "Publicar" : "Guardar borrador"}
+                    {rt.label}
                   </button>
                 ))}
               </div>
-
-              {submitError && (
-                <div className="mt-3 flex items-start gap-2 rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-600">
-                  <MaterialIcon name="error" className="mt-0.5 shrink-0 text-sm text-red-500" />
-                  <span>{submitError}</span>
-                </div>
-              )}
-
-              <button
-                type="button"
-                onClick={handleSubmit}
-                disabled={!form.title.trim() || !form.content.trim() || submitting}
-                className="mt-3 flex w-full items-center justify-center gap-2 rounded-full bg-[var(--primary)] py-3 text-sm font-semibold text-white disabled:opacity-50"
-              >
-                {submitting ? "Guardando..." : "Guardar informe"}
-                <MaterialIcon name="save" className="text-sm" />
-              </button>
             </div>
-          )}
+
+            <input
+              type="text"
+              placeholder="Título del informe..."
+              value={form.title}
+              onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
+              className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-[var(--primary)] focus:bg-white"
+            />
+
+            <textarea
+              placeholder="Describe el progreso, observaciones o notas sobre el alumno..."
+              value={form.content}
+              onChange={(e) => setForm((f) => ({ ...f, content: e.target.value }))}
+              rows={5}
+              className="mt-2 w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-[var(--primary)] focus:bg-white"
+            />
+
+            <div className="mt-3">
+              <label className="mb-2 block text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                Valoración (opcional)
+              </label>
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                <RatingPicker
+                  rating={form.rating}
+                  theme={form.ratingTheme}
+                  onChange={(rating, ratingTheme) => setForm((f) => ({ ...f, rating, ratingTheme }))}
+                />
+              </div>
+            </div>
+
+            <div className="mt-3 flex gap-2">
+              {["PUBLISHED", "DRAFT"].map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => setForm((f) => ({ ...f, status: s }))}
+                  className={`rounded-full px-3 py-1.5 text-xs font-semibold ${
+                    form.status === s
+                      ? "bg-[var(--primary)] text-white"
+                      : "bg-slate-100 text-slate-500"
+                  }`}
+                >
+                  {s === "PUBLISHED" ? "Publicar" : "Guardar borrador"}
+                </button>
+              ))}
+            </div>
+
+            {submitError && (
+              <div className="mt-3 flex items-start gap-2 rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-600">
+                <MaterialIcon name="error" className="mt-0.5 shrink-0 text-sm text-red-500" />
+                <span>{submitError}</span>
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={handleSubmit}
+              disabled={!form.title.trim() || !form.content.trim() || submitting}
+              className="mt-3 flex w-full items-center justify-center gap-2 rounded-full bg-[var(--primary)] py-3 text-sm font-semibold text-white disabled:opacity-50"
+            >
+              {submitting ? "Guardando..." : "Guardar informe"}
+              <MaterialIcon name="save" className="text-sm" />
+            </button>
+          </div>
 
           {/* Reports list */}
           <div>
@@ -304,6 +318,11 @@ export const CuadernoPage = () => {
                           <span className="text-[10px] text-slate-400">{report.type}</span>
                         </div>
                         <h4 className="mt-2 font-bold text-slate-900">{report.title}</h4>
+                        {report.rating ? (
+                          <div className="mt-2">
+                            <RatingDisplay rating={report.rating} theme={report.ratingTheme || "stars"} />
+                          </div>
+                        ) : null}
                         <p className="mt-1 line-clamp-3 text-sm text-slate-500">{report.content}</p>
                       </div>
                     </div>
@@ -320,14 +339,7 @@ export const CuadernoPage = () => {
               <div className="flex flex-col items-center gap-3 rounded-3xl border border-dashed border-slate-200 py-12 text-center">
                 <MaterialIcon name="menu_book" className="text-4xl text-slate-200" />
                 <h3 className="font-semibold text-slate-600">Sin informes aún</h3>
-                <p className="text-sm text-slate-400">Creá el primer informe para {selected.firstName}.</p>
-                <button
-                  type="button"
-                  onClick={() => setShowForm(true)}
-                  className="rounded-full bg-[var(--primary)] px-4 py-2 text-sm font-semibold text-white"
-                >
-                  Crear informe
-                </button>
+                <p className="text-sm text-slate-400">Completá el formulario de arriba para crear el primer informe de {selected.firstName}.</p>
               </div>
             )}
           </div>
@@ -336,9 +348,9 @@ export const CuadernoPage = () => {
 
       {!selected && !loading && (
         <div className="flex flex-col items-center gap-3 rounded-3xl border border-dashed border-slate-200 py-14 text-center">
-          <MaterialIcon name="menu_book" className="text-4xl text-slate-200" />
+          <MaterialIcon name="person_search" className="text-4xl text-slate-200" />
           <h3 className="font-semibold text-slate-600">Seleccioná un alumno</h3>
-          <p className="text-sm text-slate-400">Elegí un alumno arriba para ver y crear informes.</p>
+          <p className="text-sm text-slate-400">Elegí un alumno del listado para ver su información y crear informes.</p>
         </div>
       )}
     </div>

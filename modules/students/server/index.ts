@@ -1,5 +1,7 @@
 import express from 'express';
 import crypto from 'crypto';
+import path from 'path';
+import multer from 'multer';
 import type { Pool } from 'pg';
 import {
   fetchMergedItemsByCategoryCodes,
@@ -7,8 +9,11 @@ import {
   resolveRequesterScope,
   reserveNextReference,
   getRequesterUserId,
+  putObject,
   type RequesterScope
 } from '@sinapsis/module-sdk-server';
+
+const upload = multer({ storage: multer.memoryStorage() });
 
 interface StudentsModuleContext {
   app: express.Express;
@@ -25,6 +30,8 @@ export default function registerStudentsModule({ app, pool }: StudentsModuleCont
   void pool.query(`
     ALTER TABLE "StudentReport" ADD COLUMN IF NOT EXISTS "rating" INTEGER CHECK ("rating" >= 1 AND "rating" <= 5);
     ALTER TABLE "StudentReport" ADD COLUMN IF NOT EXISTS "ratingTheme" TEXT DEFAULT 'stars';
+    ALTER TABLE "Student" ADD COLUMN IF NOT EXISTS "imageUrl" TEXT;
+    ALTER TABLE "Student" ADD COLUMN IF NOT EXISTS "coverUrl" TEXT;
   `).catch(() => { /* table may not exist yet during first install */ });
 
   const requesterId = (req: express.Request): string =>
@@ -53,7 +60,19 @@ export default function registerStudentsModule({ app, pool }: StudentsModuleCont
     }
     if (scope.isProfesor) {
       params.push(scope.userId);
-      return `EXISTS (SELECT 1 FROM "StudentTeacher" st WHERE st."studentId" = s.id AND st."teacherId" = $${params.length} AND st.active)`;
+      const teacherParam = `$${params.length}`;
+      return `(
+        EXISTS (SELECT 1 FROM "StudentTeacher" st WHERE st."studentId" = s.id AND st."teacherId" = ${teacherParam} AND st.active)
+        OR (
+          to_regclass('public."ClassTeacher"') IS NOT NULL
+          AND to_regclass('public."ClassStudent"') IS NOT NULL
+          AND EXISTS (
+            SELECT 1 FROM "ClassStudent" cs
+            JOIN "ClassTeacher" ct ON ct."classId" = cs."classId" AND ct."teacherId" = ${teacherParam} AND ct.active = true
+            WHERE cs."studentId" = s.id AND cs.status = 'ACTIVE'
+          )
+        )
+      )`;
     }
     if (scope.isTutor) {
       params.push(scope.userId);
@@ -221,9 +240,14 @@ export default function registerStudentsModule({ app, pool }: StudentsModuleCont
       if (status) { params.push(status); where.push(`s.status = $${params.length}`); }
       if (companyId && scope?.isSuperAdmin) { params.push(companyId); where.push(`s."companyId" = $${params.length}`); }
 
+      const hasDisciplineTable = await tableExists('Discipline');
+      const disciplinesSubquery = hasDisciplineTable
+        ? `COALESCE((SELECT json_agg(d.name ORDER BY d.name) FROM "StudentDiscipline" sd JOIN "Discipline" d ON d.id = sd."disciplineId" WHERE sd."studentId" = s.id AND sd.status = 'ACTIVE'), '[]'::json)`
+        : `'[]'::json`;
       const result = await pool.query(
-        `SELECT s.id, s.code, s."firstName", s."lastName", s.document, s.status, s."companyId", c.name AS "companyName",
-                (SELECT COUNT(*)::int FROM "StudentDiscipline" sd WHERE sd."studentId" = s.id) AS "disciplineCount"
+        `SELECT s.id, s.code, s."firstName", s."lastName", s.document, s.status, s."companyId", s."imageUrl",
+                c.name AS "companyName",
+                ${disciplinesSubquery} AS "disciplineNames"
          FROM "Student" s JOIN "Company" c ON c.id = s."companyId"
          WHERE ${where.join(' AND ')}
          ORDER BY s."lastName" ASC, s."firstName" ASC`,
@@ -639,6 +663,35 @@ export default function registerStudentsModule({ app, pool }: StudentsModuleCont
       res.json(await loadStudent(studentId));
     } catch (error: any) {
       res.status(500).json({ error: 'Failed to remove parent', details: error.message });
+    }
+  });
+
+  // ---- Image upload (avatar / cover) ----------------------------------------
+  router.post('/:id/image', upload.single('file'), async (req, res) => {
+    try {
+      if (!(await ensureActive())) return res.status(409).json({ error: 'Students module is not active.' });
+      const scope = await scopeOf(req);
+      if (!scope?.isStaff) return res.status(403).json({ error: 'Only staff can upload student images.' });
+      const studentId = req.params.id;
+      if (!(await canAccessStudent(scope, studentId))) return res.status(403).json({ error: 'Student out of scope.' });
+      const file = req.file;
+      if (!file) return res.status(400).json({ error: 'file is required.' });
+
+      const kind = String(req.body?.kind || 'logo').trim() === 'cover' ? 'cover' : 'logo';
+      const column = kind === 'cover' ? 'coverUrl' : 'imageUrl';
+
+      const orgResult = await pool.query('SELECT * FROM "Organization" LIMIT 1');
+      const org = orgResult.rows[0] || { name: 'org', id: '1' };
+      const ext = path.extname(file.originalname || '').toLowerCase();
+      const filename = `${kind}_${Date.now()}_${crypto.randomUUID().slice(0, 8)}${ext}`;
+      const orgFolderName = org.name.replace(/[^a-z0-9]/gi, '_').toLowerCase() + '_' + String(org.id).split('-')[0];
+      const objectKey = `${orgFolderName}/students/${studentId}/${filename}`;
+      const { url: fileUrl } = await putObject({ pool, key: objectKey, buffer: file.buffer, contentType: file.mimetype });
+
+      await pool.query(`UPDATE "Student" SET "${column}" = $1, "updatedAt" = NOW() WHERE id = $2`, [fileUrl, studentId]);
+      res.json(await loadStudent(studentId));
+    } catch (error: any) {
+      res.status(500).json({ error: 'Failed to upload image', details: error.message });
     }
   });
 

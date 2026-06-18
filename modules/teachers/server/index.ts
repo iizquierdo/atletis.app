@@ -279,6 +279,7 @@ export default function registerTeachersModule({ app, pool }: TeachersModuleCont
       if (!hasStudent.rows[0]?.t) return res.json([]);
       const r = await pool.query(
         `SELECT DISTINCT s.id, s."firstName", s."lastName", s.email, s.code AS "studentCode",
+                s."imageUrl",
                 cl.id AS "classId", cl.name AS "className", c.name AS "companyName",
                 cs.status AS "enrollmentStatus"
          FROM "ClassTeacher" ct
@@ -327,6 +328,388 @@ export default function registerTeachersModule({ app, pool }: TeachersModuleCont
       res.json(r.rows);
     } catch (error: any) {
       res.status(500).json({ error: 'Failed to fetch available classes', details: error.message });
+    }
+  });
+
+  // ---- Communities for a teacher --------------------------------------------
+  router.get('/:id/communities', async (req, res) => {
+    try {
+      if (!(await ensureActive())) return res.status(409).json({ error: 'Teachers module is not active.' });
+      const auth = await authStaff(req, res);
+      if (!auth) return;
+      const target = await findInScope(auth, req.params.id);
+      if (!target) return res.status(404).json({ error: 'Teacher not found.' });
+      if (!(await tableExists('CommunityProfessor'))) return res.json([]);
+      const hasDiscipline = await tableExists('Discipline');
+      const disciplineJoin = hasDiscipline ? `LEFT JOIN "Discipline" disc ON disc.id = cm."disciplineId"` : '';
+      const disciplineSelect = hasDiscipline ? `, disc.name AS "disciplineName"` : `, NULL AS "disciplineName"`;
+      const r = await pool.query(
+        `SELECT cm.id, cm.name, cm.active, cm."imageUrl", cm."companyId", c.name AS "companyName"${disciplineSelect},
+                (SELECT COUNT(*)::int FROM "CommunityMember" m WHERE m."communityId" = cm.id AND m.active) AS "memberCount",
+                (SELECT COUNT(*)::int FROM "CommunityPost" p WHERE p."communityId" = cm.id) AS "postCount"
+         FROM "Community" cm
+         JOIN "Company" c ON c.id = cm."companyId"
+         ${disciplineJoin}
+         WHERE EXISTS (
+           SELECT 1 FROM "CommunityProfessor" cp WHERE cp."communityId" = cm.id AND cp."userId" = $1 AND cp.active = true
+         )
+         ORDER BY cm.name ASC`,
+        [req.params.id]
+      );
+      res.json(r.rows);
+    } catch (error: any) {
+      res.status(500).json({ error: 'Failed to fetch communities', details: error.message });
+    }
+  });
+
+  // ---- Reports authored by a teacher ----------------------------------------
+  router.get('/:id/reports', async (req, res) => {
+    try {
+      if (!(await ensureActive())) return res.status(409).json({ error: 'Teachers module is not active.' });
+      const auth = await authStaff(req, res);
+      if (!auth) return;
+      const target = await findInScope(auth, req.params.id);
+      if (!target) return res.status(404).json({ error: 'Teacher not found.' });
+      if (!(await tableExists('StudentReport'))) return res.json([]);
+      const r = await pool.query(
+        `SELECT r.*, (s."firstName" || ' ' || s."lastName") AS "studentName", s."imageUrl" AS "studentAvatarUrl",
+                c.name AS "companyName"
+         FROM "StudentReport" r
+         JOIN "Student" s ON s.id = r."studentId"
+         LEFT JOIN "Company" c ON c.id = s."companyId"
+         WHERE r."authorId" = $1
+         ORDER BY r."createdAt" DESC`,
+        [req.params.id]
+      );
+      res.json(r.rows);
+    } catch (error: any) {
+      res.status(500).json({ error: 'Failed to fetch reports', details: error.message });
+    }
+  });
+
+  // ---- Conversations where teacher is a participant -------------------------
+  router.get('/:id/conversations', async (req, res) => {
+    try {
+      if (!(await ensureActive())) return res.status(409).json({ error: 'Teachers module is not active.' });
+      const auth = await authStaff(req, res);
+      if (!auth) return;
+      const target = await findInScope(auth, req.params.id);
+      if (!target) return res.status(404).json({ error: 'Teacher not found.' });
+      if (!(await tableExists('Conversation'))) return res.json([]);
+      const r = await pool.query(
+        `SELECT conv.id, conv.subject, conv.status, conv."createdAt", conv."updatedAt",
+                s."firstName" AS "studentFirstName", s."lastName" AS "studentLastName",
+                s."imageUrl" AS "studentAvatarUrl",
+                last_msg.body AS "lastMessageBody",
+                last_msg."createdAt" AS "lastMessageAt",
+                COALESCE(last_sender."firstName" || ' ' || last_sender."lastName", last_sender.name) AS "lastSenderName",
+                (SELECT COUNT(*)::int FROM "Message" m WHERE m."conversationId" = conv.id) AS "messageCount"
+         FROM "Conversation" conv
+         JOIN "Student" s ON s.id = conv."studentId"
+         JOIN "ConversationParticipant" cp ON cp."conversationId" = conv.id AND cp."userId" = $1 AND cp.active = true
+         LEFT JOIN LATERAL (
+           SELECT m.body, m."createdAt", m."senderId"
+           FROM "Message" m WHERE m."conversationId" = conv.id ORDER BY m."createdAt" DESC LIMIT 1
+         ) last_msg ON true
+         LEFT JOIN "User" last_sender ON last_sender.id = last_msg."senderId"
+         ORDER BY COALESCE(last_msg."createdAt", conv."createdAt") DESC`,
+        [req.params.id]
+      );
+      res.json(r.rows);
+    } catch (error: any) {
+      res.status(500).json({ error: 'Failed to fetch conversations', details: error.message });
+    }
+  });
+
+  // ---- Available communities (not yet assigned) ----------------------------
+  router.get('/:id/available-communities', async (req, res) => {
+    try {
+      const auth = await authStaff(req, res);
+      if (!auth) return;
+      const target = await findInScope(auth, req.params.id);
+      if (!target) return res.status(404).json({ error: 'Teacher not found.' });
+      if (!(await tableExists('Community'))) return res.json([]);
+      const hasDiscipline = await tableExists('Discipline');
+      const disciplineJoin = hasDiscipline ? `LEFT JOIN "Discipline" disc ON disc.id = cm."disciplineId"` : '';
+      const disciplineSelect = hasDiscipline ? `, disc.name AS "disciplineName"` : `, NULL AS "disciplineName"`;
+      const r = await pool.query(
+        `SELECT cm.id, cm.name, c.name AS "companyName"${disciplineSelect}
+         FROM "Community" cm
+         JOIN "Company" c ON c.id = cm."companyId"
+         ${disciplineJoin}
+         WHERE c."organizationId" = $1 AND cm.active = true
+           AND NOT EXISTS (
+             SELECT 1 FROM "CommunityProfessor" cp
+             WHERE cp."communityId" = cm.id AND cp."userId" = $2 AND cp.active = true
+           )
+         ORDER BY cm.name ASC`,
+        [auth.organizationId, req.params.id]
+      );
+      res.json(r.rows);
+    } catch (error: any) {
+      res.status(500).json({ error: 'Failed to fetch available communities', details: error.message });
+    }
+  });
+
+  // ---- Add teacher to community --------------------------------------------
+  router.post('/:id/communities', async (req, res) => {
+    try {
+      const auth = await authStaff(req, res);
+      if (!auth) return;
+      const target = await findInScope(auth, req.params.id);
+      if (!target) return res.status(404).json({ error: 'Teacher not found.' });
+      const communityId = String(req.body?.communityId || '').trim();
+      if (!communityId) return res.status(400).json({ error: 'communityId is required.' });
+      await pool.query(
+        `INSERT INTO "CommunityProfessor" (id, "communityId", "userId", active, "addedAt")
+         VALUES ($1,$2,$3,true,NOW())
+         ON CONFLICT ("communityId","userId") DO UPDATE SET active = true`,
+        [crypto.randomUUID(), communityId, req.params.id]
+      );
+      res.status(201).json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ error: 'Failed to add community', details: error.message });
+    }
+  });
+
+  // ---- Remove teacher from community ---------------------------------------
+  router.delete('/:id/communities/:communityId', async (req, res) => {
+    try {
+      const auth = await authStaff(req, res);
+      if (!auth) return;
+      const target = await findInScope(auth, req.params.id);
+      if (!target) return res.status(404).json({ error: 'Teacher not found.' });
+      await pool.query(
+        `UPDATE "CommunityProfessor" SET active = false WHERE "communityId" = $1 AND "userId" = $2`,
+        [req.params.communityId, req.params.id]
+      );
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ error: 'Failed to remove community', details: error.message });
+    }
+  });
+
+  // ---- Students available for report creation by teacher -------------------
+  router.get('/:id/report-students', async (req, res) => {
+    try {
+      const auth = await authStaff(req, res);
+      if (!auth) return;
+      const target = await findInScope(auth, req.params.id);
+      if (!target) return res.status(404).json({ error: 'Teacher not found.' });
+      const hasST = await tableExists('StudentTeacher');
+      const hasCT = await tableExists('ClassTeacher');
+      const hasCS = await tableExists('ClassStudent');
+      let rows: any[] = [];
+      if (hasST || (hasCT && hasCS)) {
+        const clauses: string[] = [];
+        if (hasST) clauses.push(`EXISTS (SELECT 1 FROM "StudentTeacher" st WHERE st."studentId" = s.id AND st."teacherId" = $1 AND st.active)`);
+        if (hasCT && hasCS) clauses.push(`EXISTS (SELECT 1 FROM "ClassStudent" cs JOIN "ClassTeacher" ct ON ct."classId" = cs."classId" AND ct."teacherId" = $1 AND ct.active = true WHERE cs."studentId" = s.id AND cs.status = 'ACTIVE')`);
+        const r = await pool.query(
+          `SELECT s.id, s."firstName", s."lastName", c.name AS "companyName"
+           FROM "Student" s
+           LEFT JOIN "Company" c ON c.id = s."companyId"
+           WHERE (${clauses.join(' OR ')}) AND s.status = 'ACTIVE'
+           ORDER BY s."lastName" ASC, s."firstName" ASC`,
+          [req.params.id]
+        );
+        rows = r.rows;
+      } else {
+        const r = await pool.query(
+          `SELECT s.id, s."firstName", s."lastName", c.name AS "companyName"
+           FROM "Student" s
+           LEFT JOIN "Company" c ON c.id = s."companyId"
+           WHERE s.status = 'ACTIVE' AND c."organizationId" = $1
+           ORDER BY s."lastName" ASC, s."firstName" ASC`,
+          [auth.organizationId]
+        );
+        rows = r.rows;
+      }
+      res.json(rows);
+    } catch (error: any) {
+      res.status(500).json({ error: 'Failed to fetch students', details: error.message });
+    }
+  });
+
+  // ---- Create report authored by teacher -----------------------------------
+  router.post('/:id/reports', async (req, res) => {
+    try {
+      const auth = await authStaff(req, res);
+      if (!auth) return;
+      const target = await findInScope(auth, req.params.id);
+      if (!target) return res.status(404).json({ error: 'Teacher not found.' });
+      const studentId = String(req.body?.studentId || '').trim();
+      const title = String(req.body?.title || '').trim();
+      if (!studentId || !title) return res.status(400).json({ error: 'studentId and title are required.' });
+      const status = String(req.body?.status || 'DRAFT');
+      const id = crypto.randomUUID();
+      await pool.query(
+        `INSERT INTO "StudentReport" (id, "studentId", "authorId", type, title, content, summary, visibility, status, "publishedAt", "createdAt", "updatedAt")
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NOW(),NOW())`,
+        [
+          id, studentId, req.params.id,
+          String(req.body?.type || 'PROGRESS'),
+          title,
+          String(req.body?.content || '') || null,
+          String(req.body?.summary || '') || null,
+          String(req.body?.visibility || 'INTERNAL_STAFF'),
+          status,
+          status === 'PUBLISHED' ? new Date() : null
+        ]
+      );
+      if (req.body?.rating) {
+        await pool.query(`UPDATE "StudentReport" SET rating=$1, "ratingTheme"=$2 WHERE id=$3`, [req.body.rating, req.body.ratingTheme || 'stars', id]);
+      }
+      const created = await pool.query(
+        `SELECT r.*, (s."firstName" || ' ' || s."lastName") AS "studentName", s."imageUrl" AS "studentAvatarUrl", c.name AS "companyName"
+         FROM "StudentReport" r JOIN "Student" s ON s.id = r."studentId" LEFT JOIN "Company" c ON c.id = s."companyId"
+         WHERE r.id = $1`, [id]
+      );
+      res.status(201).json(created.rows[0]);
+    } catch (error: any) {
+      res.status(500).json({ error: 'Failed to create report', details: error.message });
+    }
+  });
+
+  // ---- Update report -------------------------------------------------------
+  router.put('/:id/reports/:reportId', async (req, res) => {
+    try {
+      const auth = await authStaff(req, res);
+      if (!auth) return;
+      const target = await findInScope(auth, req.params.id);
+      if (!target) return res.status(404).json({ error: 'Teacher not found.' });
+      const existing = await pool.query('SELECT * FROM "StudentReport" WHERE id=$1 AND "authorId"=$2 LIMIT 1', [req.params.reportId, req.params.id]);
+      if (!existing.rows[0]) return res.status(404).json({ error: 'Report not found.' });
+      const r = existing.rows[0];
+      const status = req.body?.status !== undefined ? String(req.body.status) : r.status;
+      const wasPublished = r.status === 'PUBLISHED';
+      const nowPublished = status === 'PUBLISHED';
+      await pool.query(
+        `UPDATE "StudentReport" SET type=$1, title=$2, content=$3, summary=$4, visibility=$5, status=$6, "publishedAt"=$7, "updatedAt"=NOW() WHERE id=$8`,
+        [
+          req.body?.type ?? r.type, req.body?.title ?? r.title,
+          req.body?.content !== undefined ? (String(req.body.content) || null) : r.content,
+          req.body?.summary !== undefined ? (String(req.body.summary) || null) : r.summary,
+          req.body?.visibility ?? r.visibility, status,
+          nowPublished && !wasPublished ? new Date() : r.publishedAt,
+          req.params.reportId
+        ]
+      );
+      if (req.body?.rating !== undefined) {
+        await pool.query(`UPDATE "StudentReport" SET rating=$1, "ratingTheme"=$2 WHERE id=$3`, [req.body.rating || null, req.body.ratingTheme || 'stars', req.params.reportId]);
+      }
+      const updated = await pool.query(
+        `SELECT r.*, (s."firstName" || ' ' || s."lastName") AS "studentName", s."imageUrl" AS "studentAvatarUrl", c.name AS "companyName"
+         FROM "StudentReport" r JOIN "Student" s ON s.id = r."studentId" LEFT JOIN "Company" c ON c.id = s."companyId"
+         WHERE r.id = $1`, [req.params.reportId]
+      );
+      res.json(updated.rows[0]);
+    } catch (error: any) {
+      res.status(500).json({ error: 'Failed to update report', details: error.message });
+    }
+  });
+
+  // ---- Delete report -------------------------------------------------------
+  router.delete('/:id/reports/:reportId', async (req, res) => {
+    try {
+      const auth = await authStaff(req, res);
+      if (!auth) return;
+      const target = await findInScope(auth, req.params.id);
+      if (!target) return res.status(404).json({ error: 'Teacher not found.' });
+      await pool.query('DELETE FROM "StudentReportRecipient" WHERE "reportId"=$1', [req.params.reportId]).catch(() => {});
+      await pool.query('DELETE FROM "StudentReport" WHERE id=$1 AND "authorId"=$2', [req.params.reportId, req.params.id]);
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ error: 'Failed to delete report', details: error.message });
+    }
+  });
+
+  // ---- Create conversation with teacher as participant ---------------------
+  router.post('/:id/conversations', async (req, res) => {
+    try {
+      const auth = await authStaff(req, res);
+      if (!auth) return;
+      const target = await findInScope(auth, req.params.id);
+      if (!target) return res.status(404).json({ error: 'Teacher not found.' });
+      const studentId = String(req.body?.studentId || '').trim();
+      if (!studentId) return res.status(400).json({ error: 'studentId is required.' });
+      const subject = String(req.body?.subject || '').trim() || null;
+      const convId = crypto.randomUUID();
+      await pool.query(
+        `INSERT INTO "Conversation" (id, "studentId", subject, status, "createdAt", "updatedAt") VALUES ($1,$2,$3,'OPEN',NOW(),NOW())`,
+        [convId, studentId, subject]
+      );
+      await pool.query(
+        `INSERT INTO "ConversationParticipant" (id, "conversationId", "userId", active, "joinedAt") VALUES ($1,$2,$3,true,NOW())
+         ON CONFLICT ("conversationId","userId") DO UPDATE SET active = true`,
+        [crypto.randomUUID(), convId, req.params.id]
+      );
+      if (req.body?.firstMessage) {
+        const msgId = crypto.randomUUID();
+        await pool.query(
+          `INSERT INTO "Message" (id, "conversationId", "senderId", body, "createdAt") VALUES ($1,$2,$3,$4,NOW())`,
+          [msgId, convId, req.params.id, String(req.body.firstMessage)]
+        );
+        await pool.query(`UPDATE "Conversation" SET "updatedAt"=NOW() WHERE id=$1`, [convId]);
+      }
+      const r = await pool.query(
+        `SELECT conv.id, conv.subject, conv.status, conv."createdAt",
+                s."firstName" AS "studentFirstName", s."lastName" AS "studentLastName"
+         FROM "Conversation" conv JOIN "Student" s ON s.id = conv."studentId"
+         WHERE conv.id = $1`, [convId]
+      );
+      res.status(201).json(r.rows[0]);
+    } catch (error: any) {
+      res.status(500).json({ error: 'Failed to create conversation', details: error.message });
+    }
+  });
+
+  // ---- Get messages of a conversation (teacher view) -----------------------
+  router.get('/:id/conversations/:convId/messages', async (req, res) => {
+    try {
+      const auth = await authStaff(req, res);
+      if (!auth) return;
+      const target = await findInScope(auth, req.params.id);
+      if (!target) return res.status(404).json({ error: 'Teacher not found.' });
+      const r = await pool.query(
+        `SELECT m.id, m."conversationId", m."senderId", m.body, m."createdAt",
+                COALESCE(u."firstName" || ' ' || u."lastName", u.name, u.email) AS "senderName",
+                u."imageUrl" AS "senderImageUrl"
+         FROM "Message" m
+         JOIN "User" u ON u.id = m."senderId"
+         WHERE m."conversationId" = $1
+         ORDER BY m."createdAt" ASC`,
+        [req.params.convId]
+      );
+      res.json(r.rows);
+    } catch (error: any) {
+      res.status(500).json({ error: 'Failed to fetch messages', details: error.message });
+    }
+  });
+
+  // ---- Send message as teacher ---------------------------------------------
+  router.post('/:id/conversations/:convId/messages', async (req, res) => {
+    try {
+      const auth = await authStaff(req, res);
+      if (!auth) return;
+      const target = await findInScope(auth, req.params.id);
+      if (!target) return res.status(404).json({ error: 'Teacher not found.' });
+      const body = String(req.body?.body || '').trim();
+      if (!body) return res.status(400).json({ error: 'body is required.' });
+      const msgId = crypto.randomUUID();
+      await pool.query(
+        `INSERT INTO "Message" (id, "conversationId", "senderId", body, "createdAt") VALUES ($1,$2,$3,$4,NOW())`,
+        [msgId, req.params.convId, req.params.id, body]
+      );
+      await pool.query(`UPDATE "Conversation" SET "updatedAt"=NOW() WHERE id=$1`, [req.params.convId]);
+      const r = await pool.query(
+        `SELECT m.id, m."conversationId", m."senderId", m.body, m."createdAt",
+                COALESCE(u."firstName" || ' ' || u."lastName", u.name, u.email) AS "senderName",
+                u."imageUrl" AS "senderImageUrl"
+         FROM "Message" m JOIN "User" u ON u.id = m."senderId" WHERE m.id = $1`, [msgId]
+      );
+      res.status(201).json(r.rows[0]);
+    } catch (error: any) {
+      res.status(500).json({ error: 'Failed to send message', details: error.message });
     }
   });
 

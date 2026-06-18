@@ -1,5 +1,6 @@
 import express from 'express';
 import crypto from 'crypto';
+import path from 'path';
 import multer from 'multer';
 import type { Pool } from 'pg';
 import {
@@ -47,6 +48,24 @@ export default function registerClassesModule({ app, pool }: ClassesModuleContex
     if (levelColumnsEnsured) return;
     await pool.query('ALTER TABLE "ClassLevel" ADD COLUMN IF NOT EXISTS "imageUrl" TEXT');
     levelColumnsEnsured = true;
+  };
+
+  let classImageColumnsEnsured = false;
+  const ensureClassImageColumns = async () => {
+    if (classImageColumnsEnsured) return;
+    await pool.query('ALTER TABLE "Class" ADD COLUMN IF NOT EXISTS "imageUrl" TEXT');
+    await pool.query('ALTER TABLE "Class" ADD COLUMN IF NOT EXISTS "coverUrl" TEXT');
+    classImageColumnsEnsured = true;
+  };
+
+  let communityClassIdEnsured = false;
+  const ensureCommunityClassId = async () => {
+    if (communityClassIdEnsured) return;
+    const hasCommunity = await tableExists('Community');
+    if (hasCommunity) {
+      await pool.query('ALTER TABLE "Community" ADD COLUMN IF NOT EXISTS "classId" TEXT');
+    }
+    communityClassIdEnsured = true;
   };
 
   /** SQL WHERE fragment (+params) limiting classes (alias cl) to those the requester may see. */
@@ -128,7 +147,7 @@ export default function registerClassesModule({ app, pool }: ClassesModuleContex
     const schedules = await pool.query('SELECT * FROM "ClassSchedule" WHERE "classId" = $1 ORDER BY "dayOfWeek" ASC, "startTime" ASC', [id]);
     const students = hasStudents
       ? (await pool.query(
-          `SELECT cs.*, s."firstName", s."lastName", s.code AS "studentCode", s.status AS "studentStatus"
+          `SELECT cs.*, s."firstName", s."lastName", s.code AS "studentCode", s.status AS "studentStatus", s."imageUrl"
            FROM "ClassStudent" cs JOIN "Student" s ON s.id = cs."studentId"
            WHERE cs."classId" = $1 ORDER BY s."lastName" ASC, s."firstName" ASC`,
           [id]
@@ -289,6 +308,7 @@ export default function registerClassesModule({ app, pool }: ClassesModuleContex
 
       const result = await pool.query(
         `SELECT cl.id, cl.code, cl.name, cl."disciplineId", cl."companyId", cl.capacity, cl.status,
+                cl."imageUrl", cl."coverUrl",
                 c.name AS "companyName",
                 ${hasDisciplines ? `(SELECT d.name FROM "Discipline" d WHERE d.id = cl."disciplineId")` : 'NULL'} AS "disciplineName",
                 (SELECT COALESCE(json_agg(json_build_object('id', u.id, 'name', u.name, 'avatar', COALESCE(u."imageUrl", u.avatar)) ORDER BY u.name ASC), '[]'::json) FROM "ClassTeacher" ct JOIN "User" u ON u.id = ct."teacherId" WHERE ct."classId" = cl.id AND ct.active) AS "teachers",
@@ -512,6 +532,133 @@ export default function registerClassesModule({ app, pool }: ClassesModuleContex
     }
   });
 
+  // ---- Image upload (logo / cover) ------------------------------------------
+  router.post('/:id/image', upload.single('file'), async (req, res) => {
+    try {
+      if (!(await ensureActive())) return res.status(409).json({ error: 'Classes module is not active.' });
+      const scope = await scopeOf(req);
+      if (!scope?.isStaff) return res.status(403).json({ error: 'Only staff can upload images.' });
+      if (!(await canAccessClass(scope, req.params.id))) return res.status(404).json({ error: 'Class not found' });
+      const file = req.file;
+      if (!file) return res.status(400).json({ error: 'file is required.' });
+      await ensureClassImageColumns();
+
+      const kind = String(req.body?.kind || 'logo').trim() === 'cover' ? 'cover' : 'logo';
+      const column = kind === 'cover' ? 'coverUrl' : 'imageUrl';
+
+      const orgResult = await pool.query('SELECT * FROM "Organization" LIMIT 1');
+      const org = orgResult.rows[0] || { name: 'org', id: '1' };
+      const ext = path.extname(file.originalname || '').toLowerCase();
+      const filename = `${kind}_${Date.now()}_${crypto.randomUUID().slice(0, 8)}${ext}`;
+      const orgFolderName = org.name.replace(/[^a-z0-9]/gi, '_').toLowerCase() + '_' + String(org.id).split('-')[0];
+      const objectKey = `${orgFolderName}/classes/${req.params.id}/${filename}`;
+      const { url: fileUrl } = await putObject({ pool, key: objectKey, buffer: file.buffer, contentType: file.mimetype });
+
+      await pool.query(`UPDATE "Class" SET "${column}" = $1, "updatedAt" = NOW() WHERE id = $2`, [fileUrl, req.params.id]);
+      res.json(await loadClass(req.params.id));
+    } catch (error: any) {
+      res.status(500).json({ error: 'Failed to upload image', details: error.message });
+    }
+  });
+
+  // ---- Class communities -------------------------------------------------------
+  router.get('/:id/communities', async (req, res) => {
+    try {
+      const scope = await scopeOf(req);
+      if (!(await canAccessClass(scope, req.params.id))) return res.status(404).json({ error: 'Class not found' });
+      const hasCommunity = await tableExists('Community');
+      if (!hasCommunity) return res.json([]);
+      await ensureCommunityClassId();
+      const { rows } = await pool.query(
+        `SELECT c.id, c.name, c.description, c."imageUrl", c.active,
+                (SELECT COUNT(*) FROM "CommunityMember" cm WHERE cm."communityId" = c.id AND cm.active)::int AS "memberCount"
+         FROM "Community" c
+         WHERE c."classId" = $1
+         ORDER BY c."createdAt" ASC`,
+        [req.params.id]
+      );
+      res.json(rows);
+    } catch (error: any) {
+      res.status(500).json({ error: 'Failed to fetch communities', details: error.message });
+    }
+  });
+
+  router.post('/:id/communities', async (req, res) => {
+    try {
+      const scope = await scopeOf(req);
+      if (!scope?.isStaff) return res.status(403).json({ error: 'Only staff can create communities.' });
+      if (!(await canAccessClass(scope, req.params.id))) return res.status(404).json({ error: 'Class not found' });
+      const hasCommunity = await tableExists('Community');
+      if (!hasCommunity) return res.status(409).json({ error: 'Communities module not available.' });
+      await ensureCommunityClassId();
+
+      const klass = await pool.query(
+        'SELECT id, name, "companyId" FROM "Class" WHERE id = $1 LIMIT 1',
+        [req.params.id]
+      );
+      if (!klass.rows[0]) return res.status(404).json({ error: 'Class not found' });
+      const { name: className, companyId } = klass.rows[0];
+
+      // Find a unique name: "Clase", "Clase (2)", "Clase (3)", …
+      const existingNames = await pool.query(
+        `SELECT name FROM "Community" WHERE "companyId" = $1 AND name LIKE $2`,
+        [companyId, `${className}%`]
+      );
+      const taken = new Set(existingNames.rows.map((r: any) => r.name as string));
+      let communityName = className;
+      let counter = 2;
+      while (taken.has(communityName)) { communityName = `${className} (${counter++})`; }
+
+      const communityId = crypto.randomUUID();
+      await pool.query(
+        `INSERT INTO "Community" (id, name, "companyId", "classId", "createdById", active, "createdAt", "updatedAt")
+         VALUES ($1, $2, $3, $4, $5, true, NOW(), NOW())`,
+        [communityId, communityName, companyId, req.params.id, scope.userId]
+      );
+
+      // Auto-enroll all active class students as community members
+      const [hasStudent, hasMember] = await Promise.all([tableExists('Student'), tableExists('CommunityMember')]);
+      if (hasStudent && hasMember) {
+        const students = await pool.query(
+          `SELECT cs."studentId" FROM "ClassStudent" cs WHERE cs."classId" = $1 AND cs.status = 'ACTIVE'`,
+          [req.params.id]
+        );
+        for (const row of students.rows) {
+          await pool.query(
+            `INSERT INTO "CommunityMember" (id, "communityId", "studentId", active, "joinedAt")
+             VALUES ($1, $2, $3, true, NOW())
+             ON CONFLICT ("communityId", "studentId") DO UPDATE SET active = true`,
+            [crypto.randomUUID(), communityId, row.studentId]
+          );
+        }
+      }
+
+      // Auto-add all active class teachers as community professors
+      const teachers = await pool.query(
+        `SELECT ct."teacherId" FROM "ClassTeacher" ct WHERE ct."classId" = $1 AND ct.active = true`,
+        [req.params.id]
+      );
+      for (const row of teachers.rows) {
+        await pool.query(
+          `INSERT INTO "CommunityProfessor" (id, "communityId", "userId", active, "addedAt")
+           VALUES ($1, $2, $3, true, NOW())
+           ON CONFLICT ("communityId", "userId") DO UPDATE SET active = true`,
+          [crypto.randomUUID(), communityId, row.teacherId]
+        );
+      }
+
+      const { rows } = await pool.query(
+        `SELECT c.id, c.name, c.description, c."imageUrl", c.active,
+                (SELECT COUNT(*) FROM "CommunityMember" cm WHERE cm."communityId" = c.id AND cm.active)::int AS "memberCount"
+         FROM "Community" c WHERE c.id = $1`,
+        [communityId]
+      );
+      res.status(201).json(rows[0]);
+    } catch (error: any) {
+      res.status(500).json({ error: 'Failed to create community', details: error.message });
+    }
+  });
+
   // ---- Enrolled students ----------------------------------------------------
   router.get('/:id/students', async (req, res) => {
     try {
@@ -521,7 +668,7 @@ export default function registerClassesModule({ app, pool }: ClassesModuleContex
       const hasStudents = await tableExists('Student');
       const result = hasStudents
         ? await pool.query(
-            `SELECT cs.*, s."firstName", s."lastName", s.code AS "studentCode", s.status AS "studentStatus"
+            `SELECT cs.*, s."firstName", s."lastName", s.code AS "studentCode", s.status AS "studentStatus", s."imageUrl"
              FROM "ClassStudent" cs JOIN "Student" s ON s.id = cs."studentId"
              WHERE cs."classId" = $1 ORDER BY s."lastName" ASC, s."firstName" ASC`,
             [req.params.id]

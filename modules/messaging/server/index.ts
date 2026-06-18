@@ -342,9 +342,17 @@ export default async function registerMessagingModule({ app, pool }: MessagingMo
         )`;
       } else if (scope.isProfesor) {
         params.push(userId);
-        clause = `EXISTS (
-          SELECT 1 FROM "StudentTeacher" st
-          WHERE st."studentId" = s.id AND st."teacherId" = $${params.length} AND st.active
+        clause = `(
+          EXISTS (SELECT 1 FROM "StudentTeacher" st WHERE st."studentId" = s.id AND st."teacherId" = $${params.length} AND st.active)
+          OR (
+            to_regclass('public."ClassTeacher"') IS NOT NULL
+            AND to_regclass('public."ClassStudent"') IS NOT NULL
+            AND EXISTS (
+              SELECT 1 FROM "ClassStudent" cs
+              JOIN "ClassTeacher" ct ON ct."classId" = cs."classId" AND ct."teacherId" = $${params.length} AND ct.active = true
+              WHERE cs."studentId" = s.id AND cs.status = 'ACTIVE'
+            )
+          )
         )`;
       } else if (scope.isAdminSede && !scope.isSuperAdmin) {
         if (!scope.companyScope || !scope.companyScope.length) return res.json([]);

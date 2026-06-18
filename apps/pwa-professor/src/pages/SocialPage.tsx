@@ -1,15 +1,19 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
+import { CustomSelect, type SelectOption } from "../components/CustomSelect";
 import { MaterialIcon } from "../components/MaterialIcon";
 import { useAuth } from "../context/AuthContext";
 import {
   createCommunityPost,
   createPostComment,
+  deleteCommunityPost,
+  deletePostComment,
   fetchCommunities,
   fetchPostComments,
   togglePostLike,
   uploadFile
 } from "../lib/data";
+import { resolveMediaUrl } from "../lib/media";
 import type {
   CommunityDetail,
   CommunityPost,
@@ -94,6 +98,22 @@ const formatDateTime = (iso?: string | null): string => {
 
 const initials = (first: string, last: string) =>
   `${first.charAt(0)}${last.charAt(0)}`.toUpperCase();
+
+/** Usa la foto del usuario logueado en sus propios posts (prioriza imageUrl del perfil). */
+const mergeAuthorAvatar = (
+  author: Pick<UserRef, "id" | "firstName" | "lastName" | "avatarUrl">,
+  currentUser: { id?: string; avatarUrl?: string | null }
+) => {
+  if (
+    currentUser.id &&
+    currentUser.avatarUrl &&
+    author.id &&
+    String(author.id) === String(currentUser.id)
+  ) {
+    return { ...author, avatarUrl: currentUser.avatarUrl };
+  }
+  return author;
+};
 
 // ─── video embed detection ────────────────────────────────────────────────────
 
@@ -186,12 +206,20 @@ interface AvatarProps {
 }
 
 const Avatar = ({ user, size = "md" }: AvatarProps) => {
+  const [imgFailed, setImgFailed] = useState(false);
   const dim = size === "sm" ? "h-7 w-7 text-[10px]" : "h-8 w-8 text-[11px]";
-  if (user.avatarUrl) {
+  const src = resolveMediaUrl(user.avatarUrl);
+
+  useEffect(() => {
+    setImgFailed(false);
+  }, [src]);
+
+  if (src && !imgFailed) {
     return (
       <img
-        src={user.avatarUrl}
+        src={src}
         alt={`${user.firstName} ${user.lastName}`}
+        onError={() => setImgFailed(true)}
         className={`${dim} shrink-0 rounded-full object-cover`}
       />
     );
@@ -201,127 +229,6 @@ const Avatar = ({ user, size = "md" }: AvatarProps) => {
       className={`flex ${dim} shrink-0 items-center justify-center rounded-full bg-[var(--primary-softer)] font-bold text-[var(--primary)]`}
     >
       {initials(user.firstName, user.lastName)}
-    </div>
-  );
-};
-
-// ─── CustomSelect ────────────────────────────────────────────────────────────
-
-interface SelectOption {
-  value: string;
-  label: string;
-}
-
-interface CustomSelectProps {
-  options: SelectOption[];
-  value: string;
-  onChange: (value: string) => void;
-  placeholder?: string;
-  className?: string;
-}
-
-const CustomSelect = ({
-  options,
-  value,
-  onChange,
-  placeholder = "Seleccionar...",
-  className = ""
-}: CustomSelectProps) => {
-  const [open, setOpen] = useState(false);
-  const [search, setSearch] = useState("");
-  const containerRef = useRef<HTMLDivElement>(null);
-  const searchRef = useRef<HTMLInputElement>(null);
-  const showSearch = options.length > 3;
-
-  useEffect(() => {
-    const handleOutside = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setOpen(false);
-        setSearch("");
-      }
-    };
-    if (open) {
-      document.addEventListener("mousedown", handleOutside);
-      if (showSearch) setTimeout(() => searchRef.current?.focus(), 60);
-    }
-    return () => document.removeEventListener("mousedown", handleOutside);
-  }, [open, showSearch]);
-
-  const filtered = search
-    ? options.filter((o) => o.label.toLowerCase().includes(search.toLowerCase()))
-    : options;
-
-  const selected = options.find((o) => o.value === value);
-
-  return (
-    <div ref={containerRef} className={`relative ${className}`}>
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className={`flex w-full items-center justify-between rounded-xl border bg-white px-3.5 py-2 text-[13px] font-medium outline-none transition-colors ${
-          open
-            ? "border-[var(--primary)] ring-2 ring-[var(--primary)]/10"
-            : "border-slate-200 hover:border-slate-300"
-        }`}
-      >
-        <span className={selected ? "text-slate-800" : "text-slate-400"}>
-          {selected?.label ?? placeholder}
-        </span>
-        <MaterialIcon
-          name={open ? "expand_less" : "expand_more"}
-          className="text-[18px] text-slate-400"
-        />
-      </button>
-
-      {open && (
-        <div className="absolute left-0 right-0 top-[calc(100%+4px)] z-50 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_8px_24px_rgb(0,0,0,0.12)]">
-          {showSearch && (
-            <div className="flex items-center gap-2 border-b border-slate-100 px-3 py-2">
-              <MaterialIcon name="search" className="shrink-0 text-[16px] text-slate-400" />
-              <input
-                ref={searchRef}
-                type="text"
-                placeholder="Buscar..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="flex-1 bg-transparent text-[13px] text-slate-800 outline-none placeholder-slate-400"
-              />
-              {search && (
-                <button type="button" onClick={() => setSearch("")} className="text-slate-400">
-                  <MaterialIcon name="close" className="text-[14px]" />
-                </button>
-              )}
-            </div>
-          )}
-          <div className="max-h-52 overflow-y-auto">
-            {filtered.length === 0 ? (
-              <p className="px-3.5 py-3 text-[12px] text-slate-400">Sin resultados</p>
-            ) : (
-              filtered.map((opt) => (
-                <button
-                  key={opt.value}
-                  type="button"
-                  onClick={() => {
-                    onChange(opt.value);
-                    setOpen(false);
-                    setSearch("");
-                  }}
-                  className={`flex w-full items-center justify-between px-3.5 py-2.5 text-[13px] text-left transition-colors hover:bg-slate-50 ${
-                    opt.value === value
-                      ? "font-semibold text-[var(--primary)]"
-                      : "text-slate-700"
-                  }`}
-                >
-                  <span>{opt.label}</span>
-                  {opt.value === value && (
-                    <MaterialIcon name="check" className="text-[16px] text-[var(--primary)]" />
-                  )}
-                </button>
-              ))
-            )}
-          </div>
-        </div>
-      )}
     </div>
   );
 };
@@ -338,18 +245,20 @@ const commentDisplayName = (c: CommunityPostComment) => {
 interface PostCardProps {
   post: LocalPost;
   onToggleLike: (postId: string, communityId: string) => Promise<void>;
-  currentUser: { firstName: string; lastName: string; avatarUrl?: string | null };
+  onDelete?: (postId: string, communityId: string) => Promise<void>;
+  currentUser: { id?: string; firstName: string; lastName: string; avatarUrl?: string | null };
 }
 
 const CONTENT_THRESHOLD = 240;
 
-const PostCard = ({ post, onToggleLike, currentUser }: PostCardProps) => {
+const PostCard = ({ post, onToggleLike, onDelete, currentUser }: PostCardProps) => {
   const [expanded, setExpanded] = useState(false);
   const [showComments, setShowComments] = useState(false);
   const [comments, setComments] = useState<CommunityPostComment[]>([]);
   const [commentsLoading, setCommentsLoading] = useState(false);
   const [commentText, setCommentText] = useState("");
   const [sending, setSending] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const commentInputRef = useRef<HTMLInputElement>(null);
 
   const media = getMediaAttachment(post);
@@ -359,6 +268,15 @@ const PostCard = ({ post, onToggleLike, currentUser }: PostCardProps) => {
   const likeCount = post.likesCount ?? post.localLikes ?? 0;
   const localImages = post.localMedia?.filter((m) => m.kind === "image" || m.kind === "video") ?? [];
   const localDocs = post.localMedia?.filter((m) => m.kind === "doc") ?? [];
+  const body = post.content.trim();
+  const title = post.title.trim();
+  const firstLine = body.split("\n")[0]?.trim() ?? "";
+  /** Título aparte solo si es distinto del cuerpo (evita duplicar en posts de una línea). */
+  const distinctTitle = Boolean(title && title !== body && title !== firstLine);
+  const isAuthor = Boolean(
+    currentUser.id && post.author.id && String(post.author.id) === String(currentUser.id)
+  );
+  const displayAuthor = mergeAuthorAvatar(post.author, currentUser);
 
   const toggleComments = async () => {
     const next = !showComments;
@@ -376,6 +294,15 @@ const PostCard = ({ post, onToggleLike, currentUser }: PostCardProps) => {
       }
     } else if (next) {
       setTimeout(() => commentInputRef.current?.focus(), 100);
+    }
+  };
+
+  const handleDeleteComment = async (commentId: string) => {
+    setComments((prev) => prev.filter((c) => c.id !== commentId));
+    try {
+      await deletePostComment(post.communityId, post.id, commentId);
+    } catch {
+      // silently ignore — comment already removed optimistically
     }
   };
 
@@ -404,11 +331,21 @@ const PostCard = ({ post, onToggleLike, currentUser }: PostCardProps) => {
     }
   };
 
+  const handleDeletePost = async () => {
+    if (!onDelete || deleting) return;
+    setDeleting(true);
+    try {
+      await onDelete(post.id, post.communityId);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   return (
     <div className="overflow-hidden rounded-2xl bg-white shadow-[0_2px_12px_rgb(0,0,0,0.06)]">
       {/* Header */}
       <div className="flex items-center gap-2.5 px-3.5 pb-2 pt-3.5">
-        <Avatar user={post.author} />
+        <Avatar user={displayAuthor} />
         <div className="min-w-0 flex-1">
           <p className="text-[13px] font-semibold leading-none text-slate-900">
             {post.author.firstName} {post.author.lastName}
@@ -423,31 +360,37 @@ const PostCard = ({ post, onToggleLike, currentUser }: PostCardProps) => {
             )}
           </p>
         </div>
-        <Link
-          to={`/social/${post.id}`}
-          className="rounded-full p-1 text-slate-300 transition-colors hover:text-slate-500"
-        >
-          <MaterialIcon name="open_in_new" className="text-sm" />
-        </Link>
+        {isAuthor && onDelete && (
+          <button
+            type="button"
+            onClick={() => void handleDeletePost()}
+            disabled={deleting}
+            title="Eliminar publicación"
+            className="shrink-0 rounded-full p-1.5 text-slate-300 transition-colors hover:bg-red-50 hover:text-red-500 disabled:opacity-40"
+          >
+            <MaterialIcon name="delete" className="text-[16px]" />
+          </button>
+        )}
       </div>
 
-      {/* Title */}
-      {post.title && (
+      {/* Texto */}
+      {distinctTitle && (
         <p className="px-3.5 pb-1 text-[13px] font-bold leading-snug text-slate-900">
-          {post.title}
+          {title}
         </p>
       )}
 
-      {/* Content */}
       <div className="px-3.5 pb-2.5">
-        {expanded || !isLong ? (
-          <p className="whitespace-pre-line text-[13px] leading-relaxed text-slate-600">
-            {post.content}
-          </p>
-        ) : (
-          <p className="line-clamp-3 text-[13px] leading-relaxed text-slate-600">
-            {post.content.replace(/\n/g, " ")}
-          </p>
+        {body && (
+          expanded || !isLong ? (
+            <p className="whitespace-pre-line text-[13px] leading-relaxed text-slate-600">
+              {body}
+            </p>
+          ) : (
+            <p className="line-clamp-3 text-[13px] leading-relaxed text-slate-600">
+              {body.replace(/\n/g, " ")}
+            </p>
+          )
         )}
         {isLong && (
           <button
@@ -556,10 +499,6 @@ const PostCard = ({ post, onToggleLike, currentUser }: PostCardProps) => {
                 : "Comentar"}
           </span>
         </button>
-        <button type="button"
-          className="ml-auto flex items-center gap-1 rounded-full px-2.5 py-1.5 text-[12px] font-semibold text-slate-400 transition-colors hover:bg-slate-50 hover:text-slate-600">
-          <MaterialIcon name="share" className="text-sm" />
-        </button>
       </div>
 
       {/* Comments panel */}
@@ -576,13 +515,20 @@ const PostCard = ({ post, onToggleLike, currentUser }: PostCardProps) => {
                 const name = commentDisplayName(c);
                 const avatarUser = { firstName: c.firstName ?? name.split(" ")[0] ?? "", lastName: c.lastName ?? name.split(" ")[1] ?? "", avatarUrl: c.avatarUrl };
                 return (
-                  <div key={c.id} className="flex gap-2">
+                  <div key={c.id} className="flex gap-2 group">
                     <Avatar user={avatarUser} size="sm" />
                     <div className="flex-1 rounded-2xl rounded-tl-none bg-white px-3 py-2 shadow-[0_1px_4px_rgb(0,0,0,0.05)]">
                       <p className="text-[11px] font-semibold text-slate-800">{name}</p>
                       <p className="mt-0.5 whitespace-pre-line text-[12px] leading-relaxed text-slate-600">{c.content}</p>
                       <p className="mt-1 text-[10px] text-slate-400">{relativeTime(c.createdAt)}</p>
                     </div>
+                    <button
+                      type="button"
+                      onClick={() => void handleDeleteComment(c.id)}
+                      className="self-start mt-1 opacity-0 group-hover:opacity-100 rounded-full p-1 text-slate-300 hover:text-red-400 hover:bg-red-50 transition-all"
+                    >
+                      <MaterialIcon name="delete" className="text-sm" />
+                    </button>
                   </div>
                 );
               })}
@@ -622,7 +568,7 @@ const PostCard = ({ post, onToggleLike, currentUser }: PostCardProps) => {
 
 interface PostComposerProps {
   communities: CommunityDetail[];
-  currentUser: { firstName: string; lastName: string; avatarUrl?: string | null };
+  currentUser: { id?: string; firstName: string; lastName: string; avatarUrl?: string | null };
   defaultCommunityId: string;
   onPost: (post: LocalPost) => void;
 }
@@ -702,15 +648,17 @@ const PostComposer = ({
     }
 
     // 2. Create post in API
+    let createdId = `local-${Date.now()}`;
     try {
       if (communityId) {
-        await createCommunityPost(communityId, {
+        const created = await createCommunityPost(communityId, {
           title,
           content: content.trim(),
           status: "PUBLISHED",
           coverUrl,
           membersOnly
         });
+        if (created.id) createdId = created.id;
       }
     } catch {
       /* publish locally even if API fails */
@@ -718,7 +666,7 @@ const PostComposer = ({
 
     // 3. Add to local feed
     onPost({
-      id: `local-${Date.now()}`,
+      id: createdId,
       communityId,
       title,
       content: content.trim(),
@@ -727,7 +675,7 @@ const PostComposer = ({
       membersOnly,
       publishedAt: new Date().toISOString(),
       author: {
-        id: "me",
+        id: currentUser.id || "me",
         firstName: currentUser.firstName,
         lastName: currentUser.lastName,
         avatarUrl: currentUser.avatarUrl ?? null
@@ -967,6 +915,15 @@ export const SocialPage = () => {
 
   const handlePost = (post: LocalPost) => { setPosts((prev) => [post, ...prev]); setDisplayCount((c) => c + 1); };
 
+  const handleDeletePost = async (postId: string, communityId: string) => {
+    setPosts((prev) => prev.filter((p) => p.id !== postId));
+    try {
+      await deleteCommunityPost(communityId, postId);
+    } catch {
+      /* already removed optimistically */
+    }
+  };
+
   const handleLike = async (postId: string, communityId: string) => {
     // Optimistic update
     setPosts((prev) =>
@@ -1006,7 +963,7 @@ export const SocialPage = () => {
   };
 
   const currentUser = user
-    ? { firstName: user.firstName, lastName: user.lastName, avatarUrl: user.avatarUrl ?? null }
+    ? { id: user.id, firstName: user.firstName, lastName: user.lastName, avatarUrl: user.avatarUrl ?? null }
     : { firstName: "Prof.", lastName: "Vos", avatarUrl: null };
 
   const filteredPosts = filterCommunityId
@@ -1068,6 +1025,7 @@ export const SocialPage = () => {
               key={post.id}
               post={post}
               onToggleLike={handleLike}
+              onDelete={handleDeletePost}
               currentUser={currentUser}
             />
           ))}

@@ -10,6 +10,7 @@ import { SocialPage } from "./pages/SocialPage";
 import { SocialArticlePage } from "./pages/SocialArticlePage";
 import { CuadernoPage } from "./pages/CuadernoPage";
 import { ChatPage } from "./pages/ChatPage";
+import { PerfilPage } from "./pages/PerfilPage";
 
 const App = () => {
   return (
@@ -27,6 +28,7 @@ const App = () => {
           <Route path="/social/:postId" element={<SocialArticlePage />} />
           <Route path="/cuaderno" element={<CuadernoPage />} />
           <Route path="/chat" element={<ChatPage />} />
+          <Route path="/perfil" element={<PerfilPage />} />
           <Route path="*" element={<Navigate to="/resumen" replace />} />
         </Route>
       </Route>

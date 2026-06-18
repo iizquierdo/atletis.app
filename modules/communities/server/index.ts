@@ -1,13 +1,18 @@
 import express from 'express';
 import crypto from 'crypto';
+import path from 'path';
+import multer from 'multer';
 import type { Pool } from 'pg';
 import {
   fetchMergedItemsByCategoryCodes,
   resolveTenantAuthContext,
   resolveRequesterScope,
   getRequesterUserId,
+  putObject,
   type RequesterScope
 } from '@sinapsis/module-sdk-server';
+
+const upload = multer({ storage: multer.memoryStorage() });
 
 interface CommunitiesModuleContext {
   app: express.Express;
@@ -32,13 +37,27 @@ export default function registerCommunitiesModule({ app, pool }: CommunitiesModu
     return Boolean(r.rows[0]?.t);
   };
 
-  /** Company filter for non-super requesters. */
+  const professorMembershipClause = (userId: string, params: any[]): string => {
+    params.push(userId);
+    return `cm.id IN (SELECT "communityId" FROM "CommunityProfessor" WHERE "userId" = $${params.length} AND active = true)`;
+  };
+
+  /** Community visibility: admins by company scope; professors/tutors only when invited. */
   const scopedCommunityClause = (scope: RequesterScope | null, params: any[]): string => {
     if (!scope) return 'false';
     if (scope.isSuperAdmin) return 'true';
-    if (!scope.companyScope.length) return 'false';
-    params.push(scope.companyScope);
-    return `cm."companyId" = ANY($${params.length})`;
+    if ((scope.isProfesor || scope.isTutor) && !scope.isStaff && scope.userId) {
+      return professorMembershipClause(scope.userId, params);
+    }
+    const conditions: string[] = [];
+    if (scope.companyScope.length) {
+      params.push(scope.companyScope);
+      conditions.push(`cm."companyId" = ANY($${params.length})`);
+    }
+    if (scope.userId) {
+      conditions.push(professorMembershipClause(scope.userId, params));
+    }
+    return conditions.length ? `(${conditions.join(' OR ')})` : 'false';
   };
 
   const canAccess = async (scope: RequesterScope | null, communityId: string): Promise<boolean> => {
@@ -47,9 +66,26 @@ export default function registerCommunitiesModule({ app, pool }: CommunitiesModu
       const r = await pool.query('SELECT 1 FROM "Community" WHERE id = $1 LIMIT 1', [communityId]);
       return Boolean(r.rows[0]);
     }
-    if (!scope.companyScope.length) return false;
-    const r = await pool.query('SELECT 1 FROM "Community" WHERE id = $1 AND "companyId" = ANY($2) LIMIT 1', [communityId, scope.companyScope]);
-    return Boolean(r.rows[0]);
+    if ((scope.isProfesor || scope.isTutor) && !scope.isStaff && scope.userId) {
+      if (!(await tableExists('CommunityProfessor'))) return false;
+      const r = await pool.query(
+        'SELECT 1 FROM "CommunityProfessor" WHERE "communityId" = $1 AND "userId" = $2 AND active = true LIMIT 1',
+        [communityId, scope.userId]
+      );
+      return Boolean(r.rows[0]);
+    }
+    if (scope.companyScope.length) {
+      const r = await pool.query('SELECT 1 FROM "Community" WHERE id = $1 AND "companyId" = ANY($2) LIMIT 1', [communityId, scope.companyScope]);
+      if (r.rows[0]) return true;
+    }
+    if (scope.userId && await tableExists('CommunityProfessor')) {
+      const r = await pool.query(
+        'SELECT 1 FROM "CommunityProfessor" WHERE "communityId" = $1 AND "userId" = $2 AND active = true LIMIT 1',
+        [communityId, scope.userId]
+      );
+      if (r.rows[0]) return true;
+    }
+    return false;
   };
 
   const loadCommunity = async (id: string) => {
@@ -111,19 +147,32 @@ export default function registerCommunitiesModule({ app, pool }: CommunitiesModu
   router.get('/', async (req, res) => {
     try {
       if (!(await ensureActive())) return res.status(409).json({ error: 'Communities module is not active.' });
+      await ensureProfessorsTable();
       const scope = await scopeOf(req);
       const params: any[] = [];
       const where: string[] = [scopedCommunityClause(scope, params)];
       const search = String(req.query.search || '').trim();
       const companyId = String(req.query.companyId || '').trim();
+      const studentId = String(req.query.studentId || '').trim();
       if (search) { params.push(`%${search}%`); where.push(`LOWER(cm.name) LIKE LOWER($${params.length})`); }
       if (companyId && scope?.isSuperAdmin) { params.push(companyId); where.push(`cm."companyId" = $${params.length}`); }
+      if (studentId) {
+        params.push(studentId);
+        where.push(`EXISTS (SELECT 1 FROM "CommunityMember" mbr WHERE mbr."communityId" = cm.id AND mbr."studentId" = $${params.length} AND mbr.active = true)`);
+      }
+
+      const hasDisciplineTable = await tableExists('Discipline');
+      const disciplineJoin = hasDisciplineTable
+        ? `LEFT JOIN "Discipline" disc ON disc.id = cm."disciplineId"`
+        : '';
+      const disciplineSelect = hasDisciplineTable ? `, disc.name AS "disciplineName"` : `, NULL AS "disciplineName"`;
 
       const result = await pool.query(
-        `SELECT cm.id, cm.name, cm.active, cm."companyId", c.name AS "companyName",
+        `SELECT cm.id, cm.name, cm.active, cm."imageUrl", cm."companyId", c.name AS "companyName"${disciplineSelect},
                 (SELECT COUNT(*)::int FROM "CommunityMember" m WHERE m."communityId" = cm.id AND m.active) AS "memberCount",
                 (SELECT COUNT(*)::int FROM "CommunityPost" p WHERE p."communityId" = cm.id) AS "postCount"
          FROM "Community" cm JOIN "Company" c ON c.id = cm."companyId"
+         ${disciplineJoin}
          WHERE ${where.join(' AND ')} ORDER BY cm.name ASC`,
         params
       );
@@ -172,7 +221,7 @@ export default function registerCommunitiesModule({ app, pool }: CommunitiesModu
       const hasStudents = await tableExists('Student');
       const result = hasStudents
         ? await pool.query(
-            `SELECT m.id, m."studentId", m.active, s."firstName", s."lastName", s.code
+            `SELECT m.id, m."studentId", m.active, s."firstName", s."lastName", s.code, s."imageUrl"
              FROM "CommunityMember" m LEFT JOIN "Student" s ON s.id = m."studentId"
              WHERE m."communityId" = $1 AND m.active ORDER BY s."lastName" ASC`,
             [req.params.id]
@@ -210,15 +259,153 @@ export default function registerCommunitiesModule({ app, pool }: CommunitiesModu
     }
   });
 
+  // ---- Professors -----------------------------------------------------------
+
+  const ensureProfessorsTable = async () => {
+    if (await tableExists('CommunityProfessor')) return;
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS "CommunityProfessor" (
+        id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+        "communityId" TEXT NOT NULL REFERENCES "Community"(id) ON DELETE CASCADE,
+        "userId" TEXT NOT NULL REFERENCES "User"(id) ON DELETE CASCADE,
+        active BOOLEAN NOT NULL DEFAULT true,
+        "addedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE ("communityId", "userId")
+      );
+      CREATE INDEX IF NOT EXISTS idx_cpf_user ON "CommunityProfessor"("userId");
+    `);
+  };
+
+  router.get('/:id/professors', async (req, res) => {
+    try {
+      if (!(await ensureActive())) return res.status(409).json({ error: 'Communities module is not active.' });
+      if (!(await canAccess(await scopeOf(req), req.params.id))) return res.status(403).json({ error: 'Community out of scope.' });
+      await ensureProfessorsTable();
+      const result = await pool.query(
+        `SELECT cp.id, cp."userId", cp.active, u.name, u."firstName", u."lastName", u.email
+         FROM "CommunityProfessor" cp JOIN "User" u ON u.id = cp."userId"
+         WHERE cp."communityId" = $1 AND cp.active ORDER BY u."lastName" ASC`,
+        [req.params.id]
+      );
+      res.json(result.rows);
+    } catch (error: any) {
+      res.status(500).json({ error: 'Failed to fetch professors', details: error.message });
+    }
+  });
+
+  router.put('/:id/professors', async (req, res) => {
+    try {
+      if (!(await ensureActive())) return res.status(409).json({ error: 'Communities module is not active.' });
+      if (!(await canAccess(await scopeOf(req), req.params.id))) return res.status(403).json({ error: 'Community out of scope.' });
+      await ensureProfessorsTable();
+      const userIds: string[] = Array.isArray(req.body?.userIds)
+        ? req.body.userIds.map((x: any) => String(x || '').trim()).filter(Boolean)
+        : [];
+      await pool.query('UPDATE "CommunityProfessor" SET active = false WHERE "communityId" = $1', [req.params.id]);
+      for (const uid of userIds) {
+        await pool.query(
+          'INSERT INTO "CommunityProfessor" (id, "communityId", "userId", active, "addedAt") VALUES ($1,$2,$3,true,NOW()) ON CONFLICT ("communityId","userId") DO UPDATE SET active = true',
+          [crypto.randomUUID(), req.params.id, uid]
+        );
+      }
+      res.json({ success: true, count: userIds.length });
+    } catch (error: any) {
+      res.status(500).json({ error: 'Failed to update professors', details: error.message });
+    }
+  });
+
+  router.delete('/:id/professors/:userId', async (req, res) => {
+    try {
+      if (!(await ensureActive())) return res.status(409).json({ error: 'Communities module is not active.' });
+      if (!(await canAccess(await scopeOf(req), req.params.id))) return res.status(403).json({ error: 'Community out of scope.' });
+      await ensureProfessorsTable();
+      await pool.query(
+        'UPDATE "CommunityProfessor" SET active = false WHERE "communityId" = $1 AND "userId" = $2',
+        [req.params.id, req.params.userId]
+      );
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ error: 'Failed to remove professor', details: error.message });
+    }
+  });
+
+  // ---- Image upload (logo / cover) ------------------------------------------
+  let communityImageColumnsEnsured = false;
+  const ensureCommunityImageColumns = async () => {
+    if (communityImageColumnsEnsured) return;
+    await pool.query('ALTER TABLE "Community" ADD COLUMN IF NOT EXISTS "coverUrl" TEXT');
+    communityImageColumnsEnsured = true;
+  };
+
+  router.post('/:id/image', upload.single('file'), async (req, res) => {
+    try {
+      if (!(await ensureActive())) return res.status(409).json({ error: 'Communities module is not active.' });
+      const scope = await scopeOf(req);
+      if (!scope?.isStaff) return res.status(403).json({ error: 'Only staff can upload images.' });
+      if (!(await canAccess(scope, req.params.id))) return res.status(404).json({ error: 'Community not found.' });
+      const file = req.file;
+      if (!file) return res.status(400).json({ error: 'file is required.' });
+      await ensureCommunityImageColumns();
+
+      const kind = String(req.body?.kind || 'logo').trim() === 'cover' ? 'cover' : 'logo';
+      const column = kind === 'cover' ? 'coverUrl' : 'imageUrl';
+
+      const orgResult = await pool.query('SELECT * FROM "Organization" LIMIT 1');
+      const org = orgResult.rows[0] || { name: 'org', id: '1' };
+      const ext = path.extname(file.originalname || '').toLowerCase();
+      const filename = `${kind}_${Date.now()}_${crypto.randomUUID().slice(0, 8)}${ext}`;
+      const orgFolderName = org.name.replace(/[^a-z0-9]/gi, '_').toLowerCase() + '_' + String(org.id).split('-')[0];
+      const objectKey = `${orgFolderName}/communities/${req.params.id}/${filename}`;
+      const { url: fileUrl } = await putObject({ pool, key: objectKey, buffer: file.buffer, contentType: file.mimetype });
+
+      await pool.query(`UPDATE "Community" SET "${column}" = $1, "updatedAt" = NOW() WHERE id = $2`, [fileUrl, req.params.id]);
+      res.json(await loadCommunity(req.params.id));
+    } catch (error: any) {
+      res.status(500).json({ error: 'Failed to upload image', details: error.message });
+    }
+  });
+
   // ---- Likes ----------------------------------------------------------------
+
+  let postMediaColumnsEnsured = false;
+  const ensurePostMediaColumns = async () => {
+    if (postMediaColumnsEnsured) return;
+    await pool.query('ALTER TABLE "CommunityPost" ADD COLUMN IF NOT EXISTS "mediaType" TEXT');
+    postMediaColumnsEnsured = true;
+  };
+
+  // Upload media for a post (image / video / document)
+  router.post('/:id/posts/upload', upload.single('file'), async (req, res) => {
+    try {
+      if (!(await ensureActive())) return res.status(409).json({ error: 'Communities module is not active.' });
+      const scope = await scopeOf(req);
+      if (!(await canAccess(scope, req.params.id))) return res.status(403).json({ error: 'Community out of scope.' });
+      const file = req.file;
+      if (!file) return res.status(400).json({ error: 'file is required.' });
+
+      const orgResult = await pool.query('SELECT * FROM "Organization" LIMIT 1');
+      const org = orgResult.rows[0] || { name: 'org', id: '1' };
+      const ext = path.extname(file.originalname || '').toLowerCase();
+      const filename = `post_${Date.now()}_${crypto.randomUUID().slice(0, 8)}${ext}`;
+      const orgFolderName = org.name.replace(/[^a-z0-9]/gi, '_').toLowerCase() + '_' + String(org.id).split('-')[0];
+      const objectKey = `${orgFolderName}/communities/${req.params.id}/posts/${filename}`;
+      const { url } = await putObject({ pool, key: objectKey, buffer: file.buffer, contentType: file.mimetype });
+
+      const mime = file.mimetype;
+      const mediaType = mime.startsWith('image/') ? 'image' : mime.startsWith('video/') ? 'video' : 'document';
+      res.json({ url, mediaType });
+    } catch (error: any) {
+      res.status(500).json({ error: 'Failed to upload file', details: error.message });
+    }
+  });
 
   const ensureLikesTable = async () => {
     if (await tableExists('CommunityPostLike')) return;
     await pool.query(`
       CREATE TABLE IF NOT EXISTS "CommunityPostLike" (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        "postId" UUID NOT NULL REFERENCES "CommunityPost"(id) ON DELETE CASCADE,
-        "userId" UUID NOT NULL REFERENCES "User"(id) ON DELETE CASCADE,
+        id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+        "postId" TEXT NOT NULL REFERENCES "CommunityPost"(id) ON DELETE CASCADE,
+        "userId" TEXT NOT NULL REFERENCES "User"(id) ON DELETE CASCADE,
         "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         UNIQUE ("postId", "userId")
       );
@@ -268,6 +455,10 @@ export default function registerCommunitiesModule({ app, pool }: CommunitiesModu
       const userId = requesterId(req);
       const result = await pool.query(
         `SELECT p.*, a.name AS "authorName",
+                a."imageUrl" AS "authorImageUrl",
+                a.avatar AS "authorAvatarUrl",
+                a."firstName" AS "authorFirstName",
+                a."lastName" AS "authorLastName",
                 COALESCE(lc.cnt, 0)::int AS "likesCount",
                 COALESCE(cc.cnt, 0)::int AS "commentsCount",
                 (ul."userId" IS NOT NULL) AS "likedByMe"
@@ -297,15 +488,17 @@ export default function registerCommunitiesModule({ app, pool }: CommunitiesModu
       if (!(await canAccess(scope, req.params.id))) return res.status(403).json({ error: 'Community out of scope.' });
       const title = String(req.body?.title || '').trim();
       if (!title) return res.status(400).json({ error: 'title is required.' });
+      await ensurePostMediaColumns();
       const id = crypto.randomUUID();
       const status = String(req.body?.status || 'DRAFT').trim();
       await pool.query(
-        `INSERT INTO "CommunityPost" (id, "communityId", title, content, "coverUrl", status, "publishedAt", "membersOnly", "authorId", "createdAt", "updatedAt")
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,NOW(),NOW())`,
+        `INSERT INTO "CommunityPost" (id, "communityId", title, content, "coverUrl", "mediaType", status, "publishedAt", "membersOnly", "authorId", "createdAt", "updatedAt")
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NOW(),NOW())`,
         [
           id, req.params.id, title,
           String(req.body?.content || '').trim() || null,
           String(req.body?.coverUrl || '').trim() || null,
+          String(req.body?.mediaType || '').trim() || null,
           status,
           status === 'PUBLISHED' ? new Date() : (req.body?.publishedAt ? new Date(req.body.publishedAt) : null),
           Boolean(req.body?.membersOnly),
@@ -361,15 +554,38 @@ export default function registerCommunitiesModule({ app, pool }: CommunitiesModu
     }
   });
 
+  router.delete('/:id/posts/:postId', async (req, res) => {
+    try {
+      if (!(await ensureActive())) return res.status(409).json({ error: 'Communities module is not active.' });
+      const scope = await scopeOf(req);
+      if (!(await canAccess(scope, req.params.id))) return res.status(403).json({ error: 'Community out of scope.' });
+      const existing = await pool.query(
+        'SELECT "authorId" FROM "CommunityPost" WHERE id = $1 AND "communityId" = $2 LIMIT 1',
+        [req.params.postId, req.params.id]
+      );
+      const post = existing.rows[0];
+      if (!post) return res.status(404).json({ error: 'Post not found' });
+      const isAuthor = scope?.userId && String(post.authorId) === String(scope.userId);
+      if (!isAuthor && !scope?.isStaff) return res.status(403).json({ error: 'Only the author can delete this post.' });
+      await pool.query(
+        'UPDATE "CommunityPost" SET status = $1, "updatedAt" = NOW() WHERE id = $2 AND "communityId" = $3',
+        ['ARCHIVED', req.params.postId, req.params.id]
+      );
+      res.status(204).send();
+    } catch (error: any) {
+      res.status(500).json({ error: 'Failed to delete post', details: error.message });
+    }
+  });
+
   // ---- Comments -------------------------------------------------------------
 
   const ensureCommentsTable = async () => {
     if (await tableExists('CommunityPostComment')) return;
     await pool.query(`
       CREATE TABLE IF NOT EXISTS "CommunityPostComment" (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        "postId" UUID NOT NULL REFERENCES "CommunityPost"(id) ON DELETE CASCADE,
-        "authorId" UUID NOT NULL REFERENCES "User"(id) ON DELETE CASCADE,
+        id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+        "postId" TEXT NOT NULL REFERENCES "CommunityPost"(id) ON DELETE CASCADE,
+        "authorId" TEXT NOT NULL REFERENCES "User"(id) ON DELETE CASCADE,
         content TEXT NOT NULL,
         "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -386,7 +602,8 @@ export default function registerCommunitiesModule({ app, pool }: CommunitiesModu
       const rows = await pool.query(
         `SELECT c.id, c."postId", c.content, c."createdAt",
                 u.id AS "authorId", u.name AS "authorName",
-                u."firstName", u."lastName", u."avatarUrl"
+                u."firstName", u."lastName",
+                COALESCE(NULLIF(TRIM(u."imageUrl"), ''), NULLIF(TRIM(u.avatar), '')) AS "avatarUrl"
          FROM "CommunityPostComment" c
          JOIN "User" u ON u.id = c."authorId"
          WHERE c."postId" = $1
@@ -415,7 +632,8 @@ export default function registerCommunitiesModule({ app, pool }: CommunitiesModu
       const created = await pool.query(
         `SELECT c.id, c."postId", c.content, c."createdAt",
                 u.id AS "authorId", u.name AS "authorName",
-                u."firstName", u."lastName", u."avatarUrl"
+                u."firstName", u."lastName",
+                COALESCE(NULLIF(TRIM(u."imageUrl"), ''), NULLIF(TRIM(u.avatar), '')) AS "avatarUrl"
          FROM "CommunityPostComment" c
          JOIN "User" u ON u.id = c."authorId"
          WHERE c.id = $1`,
@@ -432,12 +650,11 @@ export default function registerCommunitiesModule({ app, pool }: CommunitiesModu
       if (!(await ensureActive())) return res.status(409).json({ error: 'Communities module is not active.' });
       if (!(await canAccess(await scopeOf(req), req.params.id))) return res.status(403).json({ error: 'Community out of scope.' });
       await ensureCommentsTable();
-      const authorId = requesterId(req);
       const r = await pool.query(
-        `DELETE FROM "CommunityPostComment" WHERE id = $1 AND "postId" = $2 AND "authorId" = $3`,
-        [req.params.commentId, req.params.postId, authorId]
+        `DELETE FROM "CommunityPostComment" WHERE id = $1 AND "postId" = $2`,
+        [req.params.commentId, req.params.postId]
       );
-      if (!r.rowCount) return res.status(404).json({ error: 'Comment not found or not yours.' });
+      if (!r.rowCount) return res.status(404).json({ error: 'Comment not found.' });
       res.status(204).send();
     } catch (error: any) {
       res.status(500).json({ error: 'Failed to delete comment', details: error.message });

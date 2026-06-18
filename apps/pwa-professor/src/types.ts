@@ -49,6 +49,12 @@ export interface SedeRef {
   name: string;
 }
 
+export interface StudentTutorRef {
+  id: string;
+  name: string;
+  email?: string | null;
+}
+
 export interface StudentSummary {
   id: string;
   firstName: string;
@@ -56,6 +62,11 @@ export interface StudentSummary {
   status: "ACTIVE" | "INACTIVE";
   sede?: SedeRef | null;
   disciplines?: StudentDiscipline[];
+  document?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  imageUrl?: string | null;
+  tutors?: StudentTutorRef[];
 }
 
 export type CommunityPostStatus = "DRAFT" | "PUBLISHED" | "UNPUBLISHED" | "ARCHIVED";
@@ -216,6 +227,8 @@ export interface StudentReport {
   createdAt: string;
   author: UserRef;
   recipients?: Array<{ user: UserRef }>;
+  rating?: number | null;
+  ratingTheme?: string | null;
 }
 
 export interface GlobalSettings {

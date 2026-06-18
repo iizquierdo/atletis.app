@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AppUser, ViewType } from '@sinapsis/shared-types';
 import {
@@ -146,7 +146,8 @@ interface CompanyItem { id: string; name: string }
 
 interface StudentRow {
   id: string; code: string; firstName: string; lastName: string; document?: string | null;
-  status: string; companyId: string; companyName?: string; disciplineCount?: number;
+  status: string; companyId: string; companyName?: string; imageUrl?: string | null;
+  disciplineNames?: string[];
 }
 
 interface Enrollment { id: string; disciplineId: string; levelId?: string | null; status: string }
@@ -182,7 +183,13 @@ const StudentModule: React.FC<Props> = ({ view, setView, currentUser, companyId,
   const [companies, setCompanies] = useState<CompanyItem[]>([]);
 
   const [selected, setSelected] = useState<any>(null);
-  const [activeTab, setActiveTab] = useState<'Overview' | 'Disciplines' | 'Staff' | 'Reports' | 'Conversations'>('Overview');
+  const [activeTab, setActiveTab] = useState<'Overview' | 'Disciplines' | 'Staff' | 'Reports' | 'Conversations' | 'Communities'>('Overview');
+
+  const [communities, setCommunities] = useState<{ id: string; name: string; imageUrl?: string | null; companyName?: string; disciplineName?: string | null; memberCount?: number; postCount?: number; active?: boolean }[]>([]);
+  const [communitiesLoading, setCommunitiesLoading] = useState(false);
+
+  const logoFileRef = useRef<HTMLInputElement>(null);
+  const coverFileRef = useRef<HTMLInputElement>(null);
 
   const [studentModalOpen, setStudentModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -216,6 +223,26 @@ const StudentModule: React.FC<Props> = ({ view, setView, currentUser, companyId,
   const genderLabel = (x: string) => t(`students.gender_${x}`, { defaultValue: labelize(x) });
   const enrollLabel = (x: string) => t(`students.enroll_${x}`, { defaultValue: labelize(x) });
   const parentLabel = (p: ParentItem) => `${p.firstName || ''} ${p.lastName || ''}`.trim() || p.name || p.email;
+
+  const loadCommunities = async (id: string) => {
+    setCommunitiesLoading(true);
+    try {
+      const res = await fetch(`/api/communities?studentId=${id}`);
+      setCommunities(res.ok ? await res.json() : []);
+    } catch { setCommunities([]); } finally { setCommunitiesLoading(false); }
+  };
+
+  const uploadStudentImage = async (kind: 'logo' | 'cover', file: File | undefined) => {
+    if (!selected || !file) return;
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      fd.append('kind', kind);
+      const res = await fetch(`/api/students/${selected.id}/image`, { method: 'POST', body: fd });
+      if (!res.ok) { const b = await res.json().catch(() => ({})); throw new Error(b?.error || t('students.errorSave')); }
+      setSelected(await res.json());
+    } catch (err: any) { setError(err.message || t('students.errorSave')); }
+  };
 
   const loadStudents = async () => {
     setLoading(true); setError('');
@@ -266,6 +293,12 @@ const StudentModule: React.FC<Props> = ({ view, setView, currentUser, companyId,
     else { setView('Students'); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view, companyId, recordId]);
+
+  useEffect(() => {
+    if (view !== 'details' || !selected?.id) return;
+    if (activeTab === 'Communities') void loadCommunities(selected.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view, activeTab, selected?.id]);
 
   const openDetails = (s: StudentRow) => { setActiveTab('Overview'); setView('StudentDetails', { id: s.id }); };
 
@@ -483,12 +516,6 @@ const StudentModule: React.FC<Props> = ({ view, setView, currentUser, companyId,
   const columns = useMemo<ColumnDef<StudentRow>[]>(
     () => [
       {
-        id: 'code',
-        accessorFn: (row) => row.code,
-        header: ({ column }) => <DataGridColumnHeader column={column} title={t('students.code')} />,
-        cell: ({ row }) => <span className="font-mono text-xs text-muted-foreground">{row.original.code}</span>
-      },
-      {
         id: 'name',
         accessorFn: (row) => `${row.firstName} ${row.lastName}`,
         header: ({ column }) => <DataGridColumnHeader column={column} title={t('students.firstName')} />,
@@ -497,7 +524,10 @@ const StudentModule: React.FC<Props> = ({ view, setView, currentUser, companyId,
           const initials = `${s.firstName.charAt(0)}${s.lastName.charAt(0)}`.toUpperCase();
           return (
             <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-red-50 text-sm font-bold text-red-500">{initials}</div>
+              {s.imageUrl
+                ? <img src={s.imageUrl} alt={initials} className="h-9 w-9 flex-shrink-0 rounded-xl object-cover" />
+                : <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-red-50 text-sm font-bold text-red-500">{initials}</div>
+              }
               <div>
                 <p className="text-sm font-semibold text-foreground">{s.firstName} {s.lastName}</p>
                 <p className="text-[11px] font-medium text-muted-foreground">{s.companyName || '—'}</p>
@@ -514,9 +544,21 @@ const StudentModule: React.FC<Props> = ({ view, setView, currentUser, companyId,
       },
       {
         id: 'disciplines',
-        accessorFn: (row) => row.disciplineCount ?? 0,
+        accessorFn: (row) => (row.disciplineNames || []).join(', '),
         header: ({ column }) => <DataGridColumnHeader column={column} title={t('students.disciplines')} />,
-        cell: ({ row }) => <span className="text-sm text-muted-foreground">{row.original.disciplineCount ?? 0}</span>
+        cell: ({ row }) => {
+          const names = row.original.disciplineNames || [];
+          if (!names.length) return <span className="text-sm text-muted-foreground">—</span>;
+          return (
+            <div className="flex flex-wrap gap-1">
+              {names.map((name) => (
+                <span key={name} className="rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-semibold text-red-600">
+                  {name}
+                </span>
+              ))}
+            </div>
+          );
+        }
       },
       {
         id: 'status',
@@ -591,9 +633,19 @@ const StudentModule: React.FC<Props> = ({ view, setView, currentUser, companyId,
       <div className="space-y-6 animate-in fade-in duration-300 pb-10">
         {error && <div className="rounded-xl bg-red-50 px-4 py-3 text-sm font-medium text-red-600">{error}</div>}
 
+        {/* Hidden file inputs for image upload */}
+        <input ref={logoFileRef} type="file" accept="image/*" className="hidden"
+          onChange={(e) => { void uploadStudentImage('logo', e.target.files?.[0]); e.target.value = ''; }} />
+        <input ref={coverFileRef} type="file" accept="image/*" className="hidden"
+          onChange={(e) => { void uploadStudentImage('cover', e.target.files?.[0]); e.target.value = ''; }} />
+
         <ProfileHeader
           title={selected ? `${selected.firstName} ${selected.lastName}` : '—'}
           initials={selected ? `${selected.firstName?.charAt(0) || ''}${selected.lastName?.charAt(0) || ''}`.toUpperCase() : '?'}
+          imageUrl={selected?.imageUrl}
+          coverUrl={selected?.coverUrl}
+          onLogoClick={() => logoFileRef.current?.click()}
+          onCoverClick={() => coverFileRef.current?.click()}
           meta={[
             { icon: <IdCard className="size-4" />, text: selected?.code || '—' },
             { icon: <Building2 className="size-4" />, text: selected?.companyName || '—' },
@@ -605,7 +657,8 @@ const StudentModule: React.FC<Props> = ({ view, setView, currentUser, companyId,
             { id: 'Disciplines', label: t('students.disciplines') },
             { id: 'Staff', label: t('students.parents') },
             { id: 'Reports', label: t('students.reports') },
-            { id: 'Conversations', label: t('students.conversations') }
+            { id: 'Conversations', label: t('students.conversations') },
+            { id: 'Communities', label: 'Comunidades' }
           ]}
           activeTab={activeTab}
           onTabChange={(id) => { setActiveTab(id as typeof activeTab); setOpenConv(null); }}
@@ -826,6 +879,47 @@ const StudentModule: React.FC<Props> = ({ view, setView, currentUser, companyId,
           </div>
         )}
 
+        {activeTab === 'Communities' && (
+          <div className="px-1">
+            {communitiesLoading ? (
+              <p className="py-8 text-center text-sm text-slate-400">…</p>
+            ) : communities.length === 0 ? (
+              <p className="rounded-xl bg-slate-50 px-4 py-8 text-center text-sm text-slate-400">Este alumno no pertenece a ninguna comunidad.</p>
+            ) : (
+              <div className="grid gap-3 sm:grid-cols-2">
+                {communities.map((c) => (
+                  <div key={c.id} className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm dark:border-border dark:bg-card">
+                    {c.imageUrl
+                      ? <img src={c.imageUrl} alt={c.name} className="h-10 w-10 flex-shrink-0 rounded-xl object-cover" />
+                      : (
+                        <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-red-50 text-red-500">
+                          <i className="fa-solid fa-users text-sm" />
+                        </div>
+                      )
+                    }
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-semibold text-slate-900 dark:text-foreground">{c.name}</p>
+                      <p className="flex items-center gap-1.5 text-[11px] text-slate-400">
+                        <Building2 className="size-3 shrink-0" />
+                        <span className="truncate">{c.companyName || '—'}</span>
+                        {c.disciplineName && <><span>·</span><span className="truncate">{c.disciplineName}</span></>}
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 flex-col items-end gap-1">
+                      <span className="text-[11px] text-slate-400">
+                        <i className="fa-solid fa-users mr-1" />{c.memberCount ?? 0}
+                      </span>
+                      <span className={cn('rounded-full px-2 py-0.5 text-[10px] font-bold', c.active ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-400')}>
+                        {c.active ? 'Activa' : 'Inactiva'}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         </div>
 
         {studentModalOpen && StudentForm()}
@@ -948,37 +1042,6 @@ const StudentModule: React.FC<Props> = ({ view, setView, currentUser, companyId,
             <Field label={`${t('students.emergency')} — ${t('students.contactPhone')}`}><input className={inputClass} value={form.emergencyContactPhone} onChange={(e) => setForm({ ...form, emergencyContactPhone: e.target.value })} /></Field>
           </div>
           <Field label={t('students.medical')}><textarea className={inputClass} rows={2} value={form.medicalNotes} onChange={(e) => setForm({ ...form, medicalNotes: e.target.value })} /></Field>
-
-          {/* Enrollment */}
-          <div className="space-y-2 rounded-xl border border-slate-200 p-3">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-widest text-slate-400">{t('students.disciplines')}</span>
-              <button type="button" onClick={() => setForm({ ...form, disciplineAssignments: [...form.disciplineAssignments, { disciplineId: '', levelId: '' }] })} className="text-xs font-bold text-red-500"><i className="fa-solid fa-plus mr-1" />{t('students.addDiscipline')}</button>
-            </div>
-            {form.disciplineAssignments.map((a, i) => {
-              const disc = meta.disciplines.find((d) => d.id === a.disciplineId);
-              return (
-                <div key={i} className="flex gap-2">
-                  <select className={inputClass} value={a.disciplineId} onChange={(e) => { const next = [...form.disciplineAssignments]; next[i] = { disciplineId: e.target.value, levelId: '' }; setForm({ ...form, disciplineAssignments: next }); }}>
-                    <option value="">{t('students.discipline')}</option>
-                    {meta.disciplines.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
-                  </select>
-                  <select className={inputClass} value={a.levelId} onChange={(e) => { const next = [...form.disciplineAssignments]; next[i].levelId = e.target.value; setForm({ ...form, disciplineAssignments: next }); }}>
-                    <option value="">{t('students.level')}</option>
-                    {(disc?.levels || []).map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
-                  </select>
-                  <button type="button" onClick={() => setForm({ ...form, disciplineAssignments: form.disciplineAssignments.filter((_, idx) => idx !== i) })} className="h-10 w-10 shrink-0 rounded-lg text-slate-300 hover:bg-red-50 hover:text-red-500"><i className="fa-solid fa-trash" /></button>
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Tutors — assigned only when editing an existing student (from the student view) */}
-          {editingId && (
-            <div className="grid grid-cols-2 gap-3">
-              <MultiSelect label={t('students.selectTutors')} options={meta.staff} selected={form.tutorIds} onToggle={(id) => setForm({ ...form, tutorIds: toggleInArray(form.tutorIds, id) })} />
-            </div>
-          )}
 
           <ModalActions onCancel={() => setStudentModalOpen(false)} cancel={t('students.cancel')} save={t('students.save')} />
         </form>

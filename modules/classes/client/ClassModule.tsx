@@ -8,7 +8,7 @@ import {
   getSortedRowModel,
   useReactTable
 } from '@tanstack/react-table';
-import { Building2, CalendarDays, Check, ChevronDown, Eye, Layers, Pencil, Power, PowerOff, Trash2, Users, X } from 'lucide-react';
+import { Building2, CalendarDays, Check, ChevronDown, Eye, Layers, Pencil, Power, PowerOff, Trash2, UserPlus, Users, X } from 'lucide-react';
 import { Button } from '@webapp/components/ui/button';
 import { DataGridColumnHeader } from '@webapp/components/ui/data-grid-column-header';
 import { cn } from '@webapp/lib/utils';
@@ -38,11 +38,13 @@ interface ClassRow {
   id: string; code?: string | null; name: string; disciplineId: string; disciplineName?: string | null;
   companyId: string; companyName?: string | null; capacity?: number | null; status: string;
   teachers?: ClassTeacherSummary[]; scheduleCount?: number; studentCount?: number;
+  imageUrl?: string | null; coverUrl?: string | null;
 }
 
 interface ScheduleForm { dayOfWeek: number; startTime: string; endTime: string; location: string }
 interface LevelForm { id?: string; name: string; levelOrder: number }
 interface AvailableStudent { id: string; code: string; firstName: string; lastName: string }
+interface ClassCommunityRow { id: string; name: string; description?: string | null; imageUrl?: string | null; active: boolean; memberCount: number }
 
 const inputClass = 'w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 outline-none focus:border-red-400 focus:ring-2 focus:ring-red-100';
 
@@ -66,7 +68,28 @@ const ClassModule: React.FC<Props> = ({ view, setView, currentUser, companyId, o
   const [companies, setCompanies] = useState<CompanyItem[]>([]);
 
   const [selected, setSelected] = useState<any>(null);
-  const [activeTab, setActiveTab] = useState<'Overview' | 'Levels' | 'Teachers' | 'Schedule' | 'Students' | 'Attendance'>('Overview');
+  const [activeTab, setActiveTab] = useState<'Overview' | 'Levels' | 'Teachers' | 'Schedule' | 'Students' | 'Attendance' | 'Communities'>('Overview');
+
+  // Image upload
+  const logoFileRef = useRef<HTMLInputElement>(null);
+  const coverFileRef = useRef<HTMLInputElement>(null);
+
+  const uploadClassImage = async (kind: 'logo' | 'cover', file: File | undefined) => {
+    if (!selected || !file) return;
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      fd.append('kind', kind);
+      const res = await fetch(`/api/classes/${selected.id}/image`, { method: 'POST', body: fd });
+      if (!res.ok) { const b = await res.json().catch(() => ({})); throw new Error(b?.error || t('classes.errorSave')); }
+      setSelected(await res.json());
+    } catch (err: any) { setError(err.message || t('classes.errorSave')); }
+  };
+
+  // Communities tab
+  const [classCommunities, setClassCommunities] = useState<ClassCommunityRow[]>([]);
+  const [commLoading, setCommLoading] = useState(false);
+  const [commCreating, setCommCreating] = useState(false);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -149,8 +172,36 @@ const ClassModule: React.FC<Props> = ({ view, setView, currentUser, companyId, o
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view, companyId, recordId]);
 
+  const loadClassCommunities = async (id: string) => {
+    setCommLoading(true);
+    try {
+      const res = await fetch(`/api/classes/${id}/communities`);
+      if (res.ok) setClassCommunities(await res.json()); else setClassCommunities([]);
+    } catch { setClassCommunities([]); } finally { setCommLoading(false); }
+  };
+
+  const createClassCommunity = async () => {
+    if (!selected?.id || commCreating) return;
+    setCommCreating(true);
+    try {
+      const res = await fetch(`/api/classes/${selected.id}/communities`, { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+      if (res.ok) {
+        const comm = await res.json();
+        setClassCommunities((prev) => [...prev, comm]);
+      } else {
+        const err = await res.json().catch(() => ({}));
+        alert(err.error || 'No se pudo crear la comunidad.');
+      }
+    } catch { alert('Error de red.'); } finally { setCommCreating(false); }
+  };
+
   useEffect(() => {
     if (view === 'details' && activeTab === 'Students' && selected?.id) void loadAvailable(selected.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view, activeTab, selected?.id]);
+
+  useEffect(() => {
+    if (view === 'details' && activeTab === 'Communities' && selected?.id) void loadClassCommunities(selected.id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view, activeTab, selected?.id]);
 
@@ -372,7 +423,10 @@ const ClassModule: React.FC<Props> = ({ view, setView, currentUser, companyId, o
           const c = row.original;
           return (
             <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-red-50 text-red-500"><CalendarDays className="size-4" /></div>
+              {c.imageUrl
+                ? <img src={c.imageUrl} alt={c.name} className="h-9 w-9 flex-shrink-0 rounded-xl object-cover" />
+                : <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-red-50 text-red-500"><CalendarDays className="size-4" /></div>
+              }
               <div>
                 <p className="text-sm font-semibold text-foreground">{c.name}</p>
                 <p className="text-[11px] font-medium text-muted-foreground">{c.disciplineName || '—'}</p>
@@ -418,7 +472,14 @@ const ClassModule: React.FC<Props> = ({ view, setView, currentUser, companyId, o
         id: 'students',
         accessorFn: (row) => row.studentCount ?? 0,
         header: ({ column }) => <DataGridColumnHeader column={column} title={t('classes.studentsCount')} />,
-        cell: ({ row }) => <span className="text-sm text-muted-foreground">{row.original.studentCount ?? 0}</span>
+        cell: ({ row }) => {
+          const c = row.original;
+          return (
+            <span className="text-sm text-muted-foreground">
+              {c.studentCount ?? 0}{c.capacity != null ? `/${c.capacity}` : ''}
+            </span>
+          );
+        }
       },
       {
         id: 'status',
@@ -473,9 +534,18 @@ const ClassModule: React.FC<Props> = ({ view, setView, currentUser, companyId, o
       <div className="space-y-6 animate-in fade-in duration-300 pb-10">
         {error && <div className="rounded-xl bg-red-50 px-4 py-3 text-sm font-medium text-red-600">{error}</div>}
 
+        <input ref={logoFileRef} type="file" accept="image/*" className="hidden"
+          onChange={(e) => { void uploadClassImage('logo', e.target.files?.[0]); e.target.value = ''; }} />
+        <input ref={coverFileRef} type="file" accept="image/*" className="hidden"
+          onChange={(e) => { void uploadClassImage('cover', e.target.files?.[0]); e.target.value = ''; }} />
+
         <ProfileHeader
           title={selected ? selected.name : '—'}
           initials={selected ? (selected.name?.charAt(0) || '?').toUpperCase() : '?'}
+          imageUrl={selected?.imageUrl}
+          coverUrl={selected?.coverUrl}
+          onLogoClick={() => logoFileRef.current?.click()}
+          onCoverClick={() => coverFileRef.current?.click()}
           meta={[
             { icon: <Layers className="size-4" />, text: selected?.disciplineName || '—' },
             { icon: <Building2 className="size-4" />, text: selected?.companyName || '—' },
@@ -487,7 +557,8 @@ const ClassModule: React.FC<Props> = ({ view, setView, currentUser, companyId, o
             { id: 'Teachers', label: t('classes.teachers') },
             { id: 'Schedule', label: t('classes.schedule') },
             { id: 'Students', label: t('classes.students') },
-            { id: 'Attendance', label: 'Asistencia' }
+            { id: 'Attendance', label: 'Asistencia' },
+            { id: 'Communities', label: 'Comunidades' }
           ]}
           activeTab={activeTab}
           onTabChange={(id) => setActiveTab(id as typeof activeTab)}
@@ -797,11 +868,18 @@ const ClassModule: React.FC<Props> = ({ view, setView, currentUser, companyId, o
                 <div className="space-y-2">
                   {(selected.students as any[]).map((s) => {
                     const lvl = enrollLevelOptions.find((l) => l.id === s.levelId)?.name;
+                    const initials = [s.firstName?.[0], s.lastName?.[0]].filter(Boolean).join('').toUpperCase() || '?';
                     return (
                       <div key={s.id} className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-3">
-                        <div>
-                          <p className="text-sm font-semibold text-slate-900">{s.lastName ? `${s.lastName}, ${s.firstName}` : s.studentId}</p>
-                          <p className="text-xs text-slate-400">{s.studentCode || ''}{lvl ? ` · ${lvl}` : ''}</p>
+                        <div className="flex items-center gap-3">
+                          {s.imageUrl
+                            ? <img src={s.imageUrl} alt={initials} className="size-9 rounded-full object-cover" />
+                            : <div className="flex size-9 items-center justify-center rounded-full bg-slate-200 text-xs font-bold text-slate-600">{initials}</div>
+                          }
+                          <div>
+                            <p className="text-sm font-semibold text-slate-900">{s.lastName ? `${s.lastName}, ${s.firstName}` : s.studentId}</p>
+                            <p className="text-xs text-slate-400">{s.studentCode || ''}{lvl ? ` · ${lvl}` : ''}</p>
+                          </div>
                         </div>
                         <Button type="button" mode="icon" size="sm" variant="outline" className="size-8 text-destructive hover:bg-destructive/10" onClick={() => removeStudent(s.studentId)} aria-label={t('classes.removeStudent')}>
                           <Trash2 className="size-3.5" />
@@ -858,11 +936,21 @@ const ClassModule: React.FC<Props> = ({ view, setView, currentUser, companyId, o
                       const rowBg = si % 2 === 0 ? 'bg-white' : 'bg-slate-50/60';
                       return (
                         <tr key={s.id}>
-                          <td className={cn('sticky left-0 z-10 min-w-[180px] border-r border-slate-100 px-4 py-2.5', rowBg)}>
-                            <p className="truncate text-sm font-medium text-slate-800">
-                              {s.lastName ? `${s.lastName}, ${s.firstName}` : s.studentId}
-                            </p>
-                            {s.studentCode && <p className="text-[11px] text-slate-400">{s.studentCode}</p>}
+                          <td className={cn('sticky left-0 z-10 min-w-[210px] border-r border-slate-100 px-3 py-2', rowBg)}>
+                            <div className="flex items-center gap-2.5">
+                              {(() => {
+                                const ini = [s.firstName?.[0], s.lastName?.[0]].filter(Boolean).join('').toUpperCase() || '?';
+                                return s.imageUrl
+                                  ? <img src={s.imageUrl} alt={ini} className="size-7 shrink-0 rounded-full object-cover" />
+                                  : <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-slate-200 text-[10px] font-bold text-slate-600">{ini}</div>;
+                              })()}
+                              <div className="min-w-0">
+                                <p className="truncate text-sm font-medium text-slate-800">
+                                  {s.lastName ? `${s.lastName}, ${s.firstName}` : s.studentId}
+                                </p>
+                                {s.studentCode && <p className="text-[11px] text-slate-400">{s.studentCode}</p>}
+                              </div>
+                            </div>
                           </td>
                           {attendanceDates.map(({ key }) => {
                             const k = `${s.studentId}_${key}`;
@@ -912,6 +1000,72 @@ const ClassModule: React.FC<Props> = ({ view, setView, currentUser, companyId, o
               </div>
             );
           })()}
+
+          {/* ---- Communities ---- */}
+          {activeTab === 'Communities' && (
+            <div className="px-1">
+              {commLoading ? (
+                <p className="py-8 text-center text-sm text-slate-400">…</p>
+              ) : classCommunities.length === 0 ? (
+                <div className="flex flex-col items-center gap-4 rounded-2xl border border-dashed border-slate-300 bg-slate-50 py-14 text-center">
+                  <div className="flex size-14 items-center justify-center rounded-2xl bg-red-50 text-red-400">
+                    <Users className="size-7" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-slate-700">Sin comunidad creada</p>
+                    <p className="mt-1 text-xs text-slate-400">Creá una comunidad con todos los alumnos de esta clase.</p>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={commCreating}
+                    onClick={() => void createClassCommunity()}
+                    className="flex items-center gap-2 rounded-xl bg-red-500 px-5 py-2.5 text-xs font-bold uppercase tracking-widest text-white hover:bg-red-600 disabled:opacity-50"
+                  >
+                    {commCreating
+                      ? <span className="size-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                      : <UserPlus className="size-4" />}
+                    Crear comunidad de clase
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {classCommunities.map((c) => (
+                    <div key={c.id} className="flex items-center gap-4 rounded-xl border border-slate-200 bg-white px-4 py-4 shadow-sm">
+                      {c.imageUrl
+                        ? <img src={c.imageUrl} alt={c.name} className="size-11 shrink-0 rounded-xl object-cover" />
+                        : <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-red-50 text-red-400"><Users className="size-5" /></div>
+                      }
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-semibold text-slate-900">{c.name}</p>
+                        {c.description && <p className="mt-0.5 truncate text-xs text-slate-400">{c.description}</p>}
+                      </div>
+                      <div className="flex shrink-0 items-center gap-3">
+                        <span className="flex items-center gap-1 text-xs font-medium text-slate-500">
+                          <Users className="size-3.5" /> {c.memberCount} miembro{c.memberCount !== 1 ? 's' : ''}
+                        </span>
+                        <span className={cn('rounded-full px-2.5 py-0.5 text-[10px] font-bold', c.active ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-400')}>
+                          {c.active ? 'Activa' : 'Inactiva'}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                  <div className="flex justify-end pt-1">
+                    <button
+                      type="button"
+                      disabled={commCreating}
+                      onClick={() => void createClassCommunity()}
+                      className="flex items-center gap-2 rounded-xl bg-red-500 px-4 py-2 text-xs font-bold uppercase tracking-widest text-white hover:bg-red-600 disabled:opacity-50"
+                    >
+                      {commCreating
+                        ? <span className="size-3 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                        : <UserPlus className="size-3.5" />}
+                      Nueva comunidad
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {modalOpen && ClassForm()}

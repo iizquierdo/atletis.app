@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AppUser, ViewType } from '@sinapsis/shared-types';
 import {
@@ -8,7 +8,7 @@ import {
   getSortedRowModel,
   useReactTable
 } from '@tanstack/react-table';
-import { Building2, Eye, FileText, Pencil, Power, PowerOff, UsersRound } from 'lucide-react';
+import { Building2, Camera, Eye, FileText, Globe, Heart, Link2, MessageCircle, Paperclip, Pencil, Power, PowerOff, Send, Trash2, UsersRound, Video, X } from 'lucide-react';
 import { Button } from '@webapp/components/ui/button';
 import { DataGridColumnHeader } from '@webapp/components/ui/data-grid-column-header';
 import { cn } from '@webapp/lib/utils';
@@ -28,13 +28,31 @@ interface Props {
 
 interface CompanyItem { id: string; name: string }
 interface DisciplineItem { id: string; name: string }
-interface CommunityRow { id: string; name: string; active: boolean; companyId: string; companyName?: string; memberCount?: number; postCount?: number }
-interface MemberItem { id: string; studentId: string; firstName?: string; lastName?: string; code?: string }
+interface CommunityRow { id: string; name: string; active: boolean; companyId: string; companyName?: string; memberCount?: number; postCount?: number; imageUrl?: string | null; coverUrl?: string | null }
+interface MemberItem { id: string; studentId: string; firstName?: string; lastName?: string; code?: string; imageUrl?: string | null }
 interface StudentItem { id: string; firstName: string; lastName: string; code: string }
-interface PostItem { id: string; title: string; content?: string | null; status: string; membersOnly: boolean; authorName?: string; createdAt: string }
+interface PostItem {
+  id: string; title: string; content?: string | null; status: string; membersOnly: boolean;
+  authorId: string; authorName?: string; authorImageUrl?: string | null; authorAvatarUrl?: string | null;
+  authorFirstName?: string; authorLastName?: string;
+  coverUrl?: string | null; mediaType?: string | null;
+  likesCount: number; commentsCount: number; likedByMe: boolean; createdAt: string;
+}
 
 const inputClass = 'w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 outline-none focus:border-red-400 focus:ring-2 focus:ring-red-100';
-const labelize = (raw: string) => String(raw || '').toLowerCase().split('_').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+
+function timeAgo(dateStr: string): string {
+  const diff = (Date.now() - new Date(dateStr).getTime()) / 1000;
+  if (diff < 60) return 'hace un momento';
+  if (diff < 3600) return `hace ${Math.floor(diff / 60)} min`;
+  if (diff < 86400) return `hace ${Math.floor(diff / 3600)} h`;
+  if (diff < 604800) return `hace ${Math.floor(diff / 86400)} d`;
+  return `hace ${Math.floor(diff / 604800)} sem`;
+}
+
+function fmtDate(dateStr: string): string {
+  return new Date(dateStr).toLocaleDateString('es-AR', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
 
 const CommunityModule: React.FC<Props> = ({ view, setView, currentUser, companyId, onSubTitleChange, recordId }) => {
   const { t } = useTranslation();
@@ -60,8 +78,64 @@ const CommunityModule: React.FC<Props> = ({ view, setView, currentUser, companyI
   const [allStudents, setAllStudents] = useState<StudentItem[]>([]);
   const [memberSel, setMemberSel] = useState<string[]>([]);
 
-  const [postModalOpen, setPostModalOpen] = useState(false);
-  const [postForm, setPostForm] = useState({ title: '', content: '', status: 'PUBLISHED', membersOnly: false });
+  // Compose (inline social feed)
+  const [composeDraft, setComposeDraft] = useState('');
+  const [composeExpanded, setComposeExpanded] = useState(false);
+  const [composeSubmitting, setComposeSubmitting] = useState(false);
+  const [composeAttachment, setComposeAttachment] = useState<{ url: string; mediaType: string } | null>(null);
+  const [attachmentUploading, setAttachmentUploading] = useState(false);
+  const [linkDraft, setLinkDraft] = useState('');
+  const [showLinkInput, setShowLinkInput] = useState(false);
+
+  // File refs
+  const logoFileRef = useRef<HTMLInputElement>(null);
+  const coverFileRef = useRef<HTMLInputElement>(null);
+  const imageAttachRef = useRef<HTMLInputElement>(null);
+  const videoAttachRef = useRef<HTMLInputElement>(null);
+  const docAttachRef = useRef<HTMLInputElement>(null);
+
+  const uploadAttachment = async (file: File) => {
+    if (!selected || attachmentUploading) return;
+    setAttachmentUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await fetch(`/api/communities/${selected.id}/posts/upload`, { method: 'POST', body: fd });
+      if (!res.ok) throw new Error();
+      const { url, mediaType } = await res.json();
+      setComposeAttachment({ url, mediaType });
+      setShowLinkInput(false);
+      setLinkDraft('');
+    } catch { setError('No se pudo subir el archivo.'); } finally { setAttachmentUploading(false); }
+  };
+
+  const addLinkAttachment = () => {
+    const url = linkDraft.trim();
+    if (!url) return;
+    setComposeAttachment({ url, mediaType: 'link' });
+    setShowLinkInput(false);
+    setLinkDraft('');
+  };
+
+  const removeMember = async (studentId: string) => {
+    if (!selected) return;
+    try {
+      await fetch(`/api/communities/${selected.id}/members/${studentId}`, { method: 'DELETE' });
+      setMembers((prev) => prev.filter((m) => m.studentId !== studentId));
+    } catch { setError(t('communities.errorSave')); }
+  };
+
+  const uploadCommunityImage = async (kind: 'logo' | 'cover', file: File | undefined) => {
+    if (!selected || !file) return;
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      fd.append('kind', kind);
+      const res = await fetch(`/api/communities/${selected.id}/image`, { method: 'POST', body: fd });
+      if (!res.ok) { const b = await res.json().catch(() => ({})); throw new Error(b?.error || 'Error al subir imagen'); }
+      setSelected(await res.json());
+    } catch (err: any) { setError(err.message || 'Error al subir imagen'); }
+  };
 
   const loadCommunities = async () => {
     setLoading(true); setError('');
@@ -120,37 +194,72 @@ const CommunityModule: React.FC<Props> = ({ view, setView, currentUser, companyI
     } catch (e: any) { setError(e.message || t('communities.errorSave')); }
   };
 
-  const toggleStatus = async (c: CommunityRow) => {
-    await fetch(`/api/communities/${c.id}/status`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ active: !c.active }) });
-    await loadCommunities();
-  };
-
   const openMemberModal = async () => {
-    const res = await fetch('/api/students?status=ACTIVE');
-    setAllStudents(res.ok ? await res.json() : []);
-    setMemberSel(members.map((m) => m.studentId));
+    try {
+      const r = await fetch('/api/students?status=ACTIVE&limit=500');
+      const data = r.ok ? await r.json() : [];
+      const list: StudentItem[] = Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : [];
+      setAllStudents(list);
+      setMemberSel(members.map((m) => m.studentId));
+    } catch { setAllStudents([]); }
     setMemberModalOpen(true);
   };
 
   const saveMembers = async () => {
     if (!selected) return;
-    await fetch(`/api/communities/${selected.id}/members`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ studentIds: memberSel }) });
-    setMemberModalOpen(false);
-    await loadDetails(selected.id);
-  };
-
-  const submitPost = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selected || !postForm.title.trim()) return;
     try {
-      const res = await fetch(`/api/communities/${selected.id}/posts`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(postForm) });
-      if (!res.ok) { const b = await res.json().catch(() => ({})); throw new Error(b?.error || t('communities.errorSave')); }
-      setPostModalOpen(false); setPostForm({ title: '', content: '', status: 'PUBLISHED', membersOnly: false });
+      await fetch(`/api/communities/${selected.id}/members`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ studentIds: memberSel }) });
+      setMemberModalOpen(false);
       await loadDetails(selected.id);
-    } catch (e: any) { setError(e.message || t('communities.errorSave')); }
+    } catch { setError(t('communities.errorSave')); }
   };
 
-  // ---- List table (standard Sinapsis ListCard) ------------------------------
+  const submitNewPost = async () => {
+    if (!selected || (!composeDraft.trim() && !composeAttachment) || composeSubmitting) return;
+    setComposeSubmitting(true);
+    try {
+      const body: Record<string, any> = {
+        title: composeDraft.trim() || (composeAttachment?.mediaType === 'link' ? composeAttachment.url : 'Adjunto'),
+        content: composeDraft.trim() || null,
+        status: 'PUBLISHED',
+      };
+      if (composeAttachment) {
+        body.coverUrl = composeAttachment.url;
+        body.mediaType = composeAttachment.mediaType;
+      }
+      const res = await fetch(`/api/communities/${selected.id}/posts`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+      });
+      if (!res.ok) throw new Error();
+      const updated = await fetch(`/api/communities/${selected.id}/posts`).then((r) => (r.ok ? r.json() : posts));
+      setPosts(updated);
+      setComposeDraft('');
+      setComposeAttachment(null);
+      setComposeExpanded(false);
+      setShowLinkInput(false);
+      setLinkDraft('');
+    } catch { setError(t('communities.errorSave')); } finally { setComposeSubmitting(false); }
+  };
+
+  const deletePost = async (postId: string) => {
+    if (!selected) return;
+    try {
+      await fetch(`/api/communities/${selected.id}/posts/${postId}`, { method: 'DELETE' });
+      setPosts((prev) => prev.filter((p) => p.id !== postId));
+    } catch { setError(t('communities.errorSave')); }
+  };
+
+  const toggleLike = async (postId: string) => {
+    if (!selected) return;
+    try {
+      const res = await fetch(`/api/communities/${selected.id}/posts/${postId}/like`, { method: 'POST' });
+      if (!res.ok) return;
+      const { liked, count } = await res.json();
+      setPosts((prev) => prev.map((p) => p.id === postId ? { ...p, likedByMe: liked, likesCount: count } : p));
+    } catch { /* ignore */ }
+  };
+
+  // ---- List table -----------------------------------------------------------
   const [sorting, setSorting] = useState<SortingState>([]);
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -168,9 +277,10 @@ const CommunityModule: React.FC<Props> = ({ view, setView, currentUser, companyI
           const c = row.original;
           return (
             <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-red-50 text-red-500">
-                <UsersRound className="size-4" />
-              </div>
+              {c.imageUrl
+                ? <img src={c.imageUrl} alt={c.name} className="h-9 w-9 flex-shrink-0 rounded-xl object-cover" />
+                : <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-red-50 text-red-500"><UsersRound className="size-4" /></div>
+              }
               <div>
                 <p className="text-sm font-semibold text-foreground">{c.name}</p>
                 <p className="text-[11px] font-medium text-muted-foreground">{c.companyName || '—'}</p>
@@ -180,97 +290,76 @@ const CommunityModule: React.FC<Props> = ({ view, setView, currentUser, companyI
         }
       },
       {
-        id: 'sede',
-        accessorFn: (row) => row.companyName || '',
-        header: ({ column }) => <DataGridColumnHeader column={column} title={t('communities.sede')} />,
-        cell: ({ row }) => <span className="text-sm text-muted-foreground">{row.original.companyName || '—'}</span>
-      },
-      {
-        id: 'members',
+        id: 'memberCount',
         accessorFn: (row) => row.memberCount ?? 0,
         header: ({ column }) => <DataGridColumnHeader column={column} title={t('communities.members')} />,
         cell: ({ row }) => <span className="text-sm text-muted-foreground">{row.original.memberCount ?? 0}</span>
       },
       {
-        id: 'posts',
+        id: 'postCount',
         accessorFn: (row) => row.postCount ?? 0,
         header: ({ column }) => <DataGridColumnHeader column={column} title={t('communities.posts')} />,
         cell: ({ row }) => <span className="text-sm text-muted-foreground">{row.original.postCount ?? 0}</span>
       },
       {
         id: 'status',
-        accessorFn: (row) => (row.active ? 'active' : 'inactive'),
+        accessorFn: (row) => row.active,
         header: ({ column }) => <DataGridColumnHeader column={column} title={t('communities.status')} />,
         cell: ({ row }) => (
-          <span
-            className={cn(
-              'rounded-lg px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider',
-              row.original.active ? 'bg-emerald-50 text-emerald-600' : 'bg-muted text-muted-foreground'
-            )}
-          >
+          <span className={cn('rounded-lg px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider', row.original.active ? 'bg-emerald-50 text-emerald-600' : 'bg-muted text-muted-foreground')}>
             {row.original.active ? t('communities.active') : t('communities.inactive')}
           </span>
         )
       },
       {
-        id: 'actions',
-        enableSorting: false,
-        meta: { headerClassName: 'text-end', cellClassName: 'text-end' },
-        header: () => (
-          <span className="inline-flex w-full justify-end text-[0.8125rem] font-medium uppercase tracking-wide text-table-header-foreground">
-            {t('communities.actions')}
-          </span>
-        ),
-        cell: ({ row }) => {
-          const c = row.original;
-          return (
-            <div className="flex justify-end gap-1" onClick={(e) => e.stopPropagation()}>
-              <Button type="button" mode="icon" size="sm" variant="outline" className="size-8" onClick={() => openDetails(c)} aria-label={t('communities.view')}>
-                <Eye className="size-3.5" />
-              </Button>
-              <Button type="button" mode="icon" size="sm" variant="outline" className="size-8" onClick={() => openEdit(c)} aria-label={t('communities.edit')}>
-                <Pencil className="size-3.5" />
-              </Button>
-              <Button
-                type="button"
-                mode="icon"
-                size="sm"
-                variant="outline"
-                className={cn('size-8', c.active && 'text-destructive hover:bg-destructive/10')}
-                onClick={() => toggleStatus(c)}
-                aria-label={t('communities.status')}
-              >
-                {c.active ? <PowerOff className="size-3.5" /> : <Power className="size-3.5" />}
-              </Button>
-            </div>
-          );
-        }
+        id: 'actions', header: () => null, enableSorting: false,
+        cell: ({ row }) => (
+          <div className="flex justify-end gap-1">
+            <Button type="button" mode="icon" size="sm" variant="outline" className="size-8" onClick={(e) => { e.stopPropagation(); openDetails(row.original); }}>
+              <Eye className="size-3.5" />
+            </Button>
+            <Button type="button" mode="icon" size="sm" variant="outline" className="size-8" onClick={(e) => { e.stopPropagation(); openEdit(row.original); }}>
+              <Pencil className="size-3.5" />
+            </Button>
+          </div>
+        )
       }
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [t]
   );
 
-  const table = useReactTable({
-    data: filtered,
-    columns,
-    state: { sorting },
-    onSortingChange: setSorting,
-    getCoreRowModel: getCoreRowModel(),
-    getSortedRowModel: getSortedRowModel()
-  });
+  const table = useReactTable({ data: filtered, columns, state: { sorting }, onSortingChange: setSorting, getCoreRowModel: getCoreRowModel(), getSortedRowModel: getSortedRowModel() });
 
   const primaryBtn = 'px-5 py-2.5 bg-red-500 hover:bg-red-600 active:scale-[0.98] transition-all text-white rounded-xl text-xs font-bold uppercase tracking-widest flex items-center justify-center gap-2';
   const toggleSel = (id: string) => setMemberSel((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
 
   if (view === 'details') {
+    const visiblePosts = posts.filter((p) => p.status !== 'ARCHIVED');
+    const currentUserAvatar = (currentUser as any)?.imageUrl || (currentUser as any)?.avatar;
+    const currentUserInitials = `${(currentUser?.firstName || currentUser?.name || ' ')[0]}`.toUpperCase();
+
     return (
       <div className="space-y-6 animate-in fade-in duration-300 pb-10">
         {error && <div className="rounded-xl bg-red-50 px-4 py-3 text-sm font-medium text-red-600">{error}</div>}
 
+        <input ref={logoFileRef} type="file" accept="image/*" className="hidden"
+          onChange={(e) => { void uploadCommunityImage('logo', e.target.files?.[0]); e.target.value = ''; }} />
+        <input ref={coverFileRef} type="file" accept="image/*" className="hidden"
+          onChange={(e) => { void uploadCommunityImage('cover', e.target.files?.[0]); e.target.value = ''; }} />
+        <input ref={imageAttachRef} type="file" accept="image/*" className="hidden"
+          onChange={(e) => { if (e.target.files?.[0]) void uploadAttachment(e.target.files[0]); e.target.value = ''; }} />
+        <input ref={videoAttachRef} type="file" accept="video/*" className="hidden"
+          onChange={(e) => { if (e.target.files?.[0]) void uploadAttachment(e.target.files[0]); e.target.value = ''; }} />
+        <input ref={docAttachRef} type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip" className="hidden"
+          onChange={(e) => { if (e.target.files?.[0]) void uploadAttachment(e.target.files[0]); e.target.value = ''; }} />
+
         <ProfileHeader
           title={selected?.name || '—'}
           imageUrl={selected?.imageUrl || undefined}
+          coverUrl={selected?.coverUrl || undefined}
+          onLogoClick={() => logoFileRef.current?.click()}
+          onCoverClick={() => coverFileRef.current?.click()}
           icon={<UsersRound className="size-10" />}
           meta={[
             { icon: <Building2 className="size-4" />, text: selected?.companyName || '—' },
@@ -294,52 +383,240 @@ const CommunityModule: React.FC<Props> = ({ view, setView, currentUser, companyI
         />
 
         <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-border dark:bg-card">
-        {activeTab === 'Overview' && selected && (
-          <div className="grid gap-4 px-1 sm:grid-cols-3">
-            <Stat n={selected.memberCount ?? members.length} label={t('communities.members')} />
-            <Stat n={selected.postCount ?? posts.length} label={t('communities.posts')} />
-            <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 sm:col-span-3">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">{t('communities.descriptionLabel')}</p>
-              <p className="mt-0.5 text-sm text-slate-700">{selected.description || '—'}</p>
+          {activeTab === 'Overview' && selected && (
+            <div className="grid gap-4 px-1 sm:grid-cols-3">
+              <Stat n={selected.memberCount ?? members.length} label={t('communities.members')} />
+              <Stat n={selected.postCount ?? posts.length} label={t('communities.posts')} />
+              <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 sm:col-span-3">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">{t('communities.descriptionLabel')}</p>
+                <p className="mt-0.5 text-sm text-slate-700">{selected.description || '—'}</p>
+              </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {activeTab === 'Members' && (
-          <div className="px-1">
-            <div className="mb-4 flex justify-end"><button onClick={openMemberModal} className={primaryBtn}><i className="fa-solid fa-user-plus" /> {t('communities.manageMembers')}</button></div>
-            {members.length === 0 ? <Empty text={t('communities.noMembers')} /> : (
-              <div className="grid gap-2 sm:grid-cols-2">
-                {members.map((m) => (
-                  <div key={m.id} className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800">
-                    {m.firstName ? `${m.firstName} ${m.lastName}` : m.studentId} {m.code && <span className="text-xs text-slate-400">· {m.code}</span>}
-                  </div>
-                ))}
+          {activeTab === 'Members' && (
+            <div className="px-1">
+              <div className="mb-4 flex justify-end">
+                <button onClick={openMemberModal} className={primaryBtn}><i className="fa-solid fa-user-plus" /> {t('communities.manageMembers')}</button>
               </div>
-            )}
-          </div>
-        )}
+              {members.length === 0 ? <Empty text={t('communities.noMembers')} /> : (
+                <div className="grid gap-3 grid-cols-2 sm:grid-cols-4">
+                  {members.map((m) => {
+                    const name = m.firstName ? `${m.firstName} ${m.lastName}` : m.studentId;
+                    const initials = `${(m.firstName || ' ')[0]}${(m.lastName || ' ')[0]}`.toUpperCase();
+                    return (
+                      <div key={m.id} className="group relative flex flex-col items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-4 text-center shadow-sm">
+                        <button
+                          type="button"
+                          onClick={() => void removeMember(m.studentId)}
+                          className="absolute right-2 top-2 hidden size-6 items-center justify-center rounded-full bg-red-50 text-red-400 hover:bg-red-100 hover:text-red-600 group-hover:flex transition-colors"
+                          title="Quitar miembro"
+                        >
+                          <X className="size-3.5" />
+                        </button>
+                        {m.imageUrl
+                          ? <img src={m.imageUrl} alt={name} className="size-14 rounded-full object-cover ring-2 ring-slate-100" />
+                          : <div className="flex size-14 items-center justify-center rounded-full bg-red-50 text-lg font-bold text-red-500 ring-2 ring-slate-100">{initials}</div>
+                        }
+                        <div className="min-w-0 w-full">
+                          <p className="truncate text-xs font-semibold text-slate-800">{name}</p>
+                          {m.code && <p className="truncate text-[10px] text-slate-400">{m.code}</p>}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
 
-        {activeTab === 'Posts' && (
-          <div className="px-1">
-            <div className="mb-4 flex justify-end"><button onClick={() => setPostModalOpen(true)} className={primaryBtn}><i className="fa-solid fa-plus" /> {t('communities.newPost')}</button></div>
-            {posts.length === 0 ? <Empty text={t('communities.noPosts')} /> : (
-              <div className="space-y-3">
-                {posts.map((p) => (
-                  <div key={p.id} className="rounded-xl border border-slate-200 bg-white p-4">
-                    <div className="flex items-center justify-between">
-                      <p className="text-sm font-semibold text-slate-900">{p.title}</p>
-                      <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase ${p.status === 'PUBLISHED' ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-400'}`}>{labelize(p.status)}</span>
+          {activeTab === 'Posts' && (
+            <div className="space-y-4 px-1">
+              {/* Compose box */}
+              <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="flex gap-3">
+                  {currentUserAvatar
+                    ? <img src={currentUserAvatar} alt="" className="size-10 shrink-0 rounded-full object-cover" />
+                    : <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-red-100 text-sm font-bold text-red-500">{currentUserInitials}</div>
+                  }
+                  {!composeExpanded ? (
+                    <button
+                      type="button"
+                      onClick={() => setComposeExpanded(true)}
+                      className="flex-1 rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-left text-sm text-slate-400 hover:bg-slate-100 transition-colors"
+                    >
+                      ¿Qué querés compartir con la comunidad?
+                    </button>
+                  ) : (
+                    <div className="flex-1 space-y-3">
+                      <div className="flex items-center gap-2">
+                        <span className="flex items-center gap-1.5 rounded-full bg-pink-50 px-3 py-1 text-xs font-semibold text-pink-500">
+                          <Globe className="size-3" /> Público
+                        </span>
+                      </div>
+                      <textarea
+                        className="w-full resize-none rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-900 outline-none focus:border-red-400 focus:ring-2 focus:ring-red-100"
+                        placeholder="¿Qué querés compartir con la comunidad?"
+                        rows={3}
+                        value={composeDraft}
+                        onChange={(e) => setComposeDraft(e.target.value)}
+                        autoFocus
+                        onKeyDown={(e) => { if (e.key === 'Enter' && e.ctrlKey) void submitNewPost(); }}
+                      />
+                      {/* Attachment preview */}
+                      {composeAttachment && (
+                        <div className="relative overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
+                          {composeAttachment.mediaType === 'image' && (
+                            <img src={composeAttachment.url} alt="" className="max-h-48 w-full object-cover" />
+                          )}
+                          {composeAttachment.mediaType === 'video' && (
+                            <video src={composeAttachment.url} controls className="max-h-48 w-full" />
+                          )}
+                          {composeAttachment.mediaType === 'document' && (
+                            <div className="flex items-center gap-2 px-4 py-3">
+                              <Paperclip className="size-4 text-slate-500" />
+                              <a href={composeAttachment.url} target="_blank" rel="noreferrer" className="truncate text-sm text-blue-600 underline">{composeAttachment.url.split('/').pop()}</a>
+                            </div>
+                          )}
+                          {composeAttachment.mediaType === 'link' && (
+                            <div className="flex items-center gap-2 px-4 py-3">
+                              <Link2 className="size-4 text-slate-500" />
+                              <a href={composeAttachment.url} target="_blank" rel="noreferrer" className="truncate text-sm text-blue-600 underline">{composeAttachment.url}</a>
+                            </div>
+                          )}
+                          <button type="button" onClick={() => setComposeAttachment(null)} className="absolute right-2 top-2 flex size-6 items-center justify-center rounded-full bg-black/40 text-white hover:bg-black/60">
+                            <X className="size-3.5" />
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Link input */}
+                      {showLinkInput && !composeAttachment && (
+                        <div className="flex gap-2">
+                          <input
+                            type="url"
+                            className="flex-1 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none focus:border-red-400 focus:ring-2 focus:ring-red-100"
+                            placeholder="https://..."
+                            value={linkDraft}
+                            onChange={(e) => setLinkDraft(e.target.value)}
+                            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addLinkAttachment(); } }}
+                            autoFocus
+                          />
+                          <button type="button" onClick={addLinkAttachment} disabled={!linkDraft.trim()} className="rounded-xl bg-blue-500 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-600 disabled:opacity-40">Agregar</button>
+                          <button type="button" onClick={() => { setShowLinkInput(false); setLinkDraft(''); }} className="rounded-xl border border-slate-200 px-3 py-2 text-xs text-slate-500 hover:bg-slate-50">✕</button>
+                        </div>
+                      )}
+
+                      <div className="flex items-center gap-3 border-t border-slate-100 pt-3">
+                        <button type="button" title="Imagen" disabled={attachmentUploading} onClick={() => imageAttachRef.current?.click()} className="text-slate-400 hover:text-slate-600 disabled:opacity-40 transition-colors">
+                          <Camera className="size-5" />
+                        </button>
+                        <button type="button" title="Video" disabled={attachmentUploading} onClick={() => videoAttachRef.current?.click()} className="text-slate-400 hover:text-slate-600 disabled:opacity-40 transition-colors">
+                          <Video className="size-5" />
+                        </button>
+                        <button type="button" title="Documento" disabled={attachmentUploading} onClick={() => docAttachRef.current?.click()} className="text-slate-400 hover:text-slate-600 disabled:opacity-40 transition-colors">
+                          <Paperclip className="size-5" />
+                        </button>
+                        <button type="button" title="Link" onClick={() => { setShowLinkInput((v) => !v); setComposeAttachment(null); }} className={cn('transition-colors', showLinkInput ? 'text-blue-500' : 'text-slate-400 hover:text-slate-600')}>
+                          <Link2 className="size-5" />
+                        </button>
+                        {attachmentUploading && <span className="size-4 animate-spin rounded-full border-2 border-slate-300 border-t-slate-600" />}
+                        <div className="flex-1" />
+                        <button type="button" onClick={() => { setComposeExpanded(false); setComposeDraft(''); setComposeAttachment(null); setShowLinkInput(false); setLinkDraft(''); }} className="px-3 py-1.5 text-sm text-slate-500 hover:text-slate-700">
+                          Cancelar
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void submitNewPost()}
+                          disabled={(!composeDraft.trim() && !composeAttachment) || composeSubmitting}
+                          className="flex items-center gap-1.5 rounded-full bg-pink-500 px-4 py-1.5 text-sm font-semibold text-white hover:bg-pink-600 disabled:opacity-50 transition-colors"
+                        >
+                          {composeSubmitting
+                            ? <span className="size-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                            : <Send className="size-3.5" />}
+                          Publicar
+                        </button>
+                      </div>
                     </div>
-                    {p.content && <p className="mt-2 text-xs text-slate-600">{p.content}</p>}
-                    <p className="mt-2 text-[10px] uppercase tracking-widest text-slate-400">{p.authorName}{p.membersOnly ? ` · ${t('communities.membersOnly')}` : ''}</p>
-                  </div>
-                ))}
+                  )}
+                </div>
               </div>
-            )}
-          </div>
-        )}
 
+              {/* Posts feed */}
+              {visiblePosts.length === 0 ? (
+                <Empty text={t('communities.noPosts')} />
+              ) : (
+                visiblePosts.map((p) => {
+                  const avatar = p.authorImageUrl || p.authorAvatarUrl;
+                  const initials = `${(p.authorFirstName || p.authorName || ' ')[0]}${(p.authorLastName || ' ')[0]}`.toUpperCase().trim() || '?';
+                  const isAuthor = p.authorId === userId;
+                  return (
+                    <div key={p.id} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                      <div className="flex items-start gap-3">
+                        {avatar
+                          ? <img src={avatar} alt={p.authorName} className="size-10 shrink-0 rounded-full object-cover" />
+                          : <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-red-50 text-sm font-bold text-red-500">{initials}</div>
+                        }
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-bold text-slate-900">{p.authorName}</p>
+                          <p className="text-xs text-slate-400">
+                            {fmtDate(p.createdAt)} · {timeAgo(p.createdAt)}
+                            {selected?.companyName ? ` · ${selected.companyName}` : ''}
+                          </p>
+                        </div>
+                        {isAuthor && (
+                          <button type="button" onClick={() => void deletePost(p.id)} className="shrink-0 text-slate-300 hover:text-red-400 transition-colors">
+                            <Trash2 className="size-4" />
+                          </button>
+                        )}
+                      </div>
+
+                      {p.content && <p className="mt-3 text-sm leading-relaxed text-slate-700">{p.content}</p>}
+
+                      {/* Attachment */}
+                      {p.coverUrl && (
+                        <div className="mt-3 overflow-hidden rounded-xl border border-slate-100">
+                          {p.mediaType === 'image' && (
+                            <img src={p.coverUrl} alt="" className="max-h-72 w-full object-cover" />
+                          )}
+                          {p.mediaType === 'video' && (
+                            <video src={p.coverUrl} controls className="max-h-72 w-full" />
+                          )}
+                          {p.mediaType === 'document' && (
+                            <a href={p.coverUrl} target="_blank" rel="noreferrer" className="flex items-center gap-2 bg-slate-50 px-4 py-3 text-sm text-blue-600 hover:bg-slate-100">
+                              <Paperclip className="size-4 shrink-0" />
+                              <span className="truncate">{p.coverUrl.split('/').pop()}</span>
+                            </a>
+                          )}
+                          {p.mediaType === 'link' && (
+                            <a href={p.coverUrl} target="_blank" rel="noreferrer" className="flex items-center gap-2 bg-slate-50 px-4 py-3 text-sm text-blue-600 hover:bg-slate-100">
+                              <Link2 className="size-4 shrink-0" />
+                              <span className="truncate">{p.coverUrl}</span>
+                            </a>
+                          )}
+                        </div>
+                      )}
+
+                      <div className="mt-3 flex items-center gap-5 border-t border-slate-100 pt-3">
+                        <button
+                          type="button"
+                          onClick={() => void toggleLike(p.id)}
+                          className={cn('flex items-center gap-1.5 text-sm transition-colors', p.likedByMe ? 'text-red-500' : 'text-slate-400 hover:text-red-400')}
+                        >
+                          <Heart className={cn('size-4', p.likedByMe && 'fill-current')} />
+                          <span>{p.likesCount}</span>
+                        </button>
+                        <button type="button" className="flex items-center gap-1.5 text-sm text-slate-400 hover:text-slate-600 transition-colors">
+                          <MessageCircle className="size-4" />
+                          <span>Comentar</span>
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          )}
         </div>
 
         {communityModalOpen && <CommunityForm />}
@@ -357,19 +634,6 @@ const CommunityModule: React.FC<Props> = ({ view, setView, currentUser, companyI
               <button onClick={() => setMemberModalOpen(false)} className="rounded-xl border border-slate-200 px-4 py-2.5 text-xs font-bold uppercase tracking-widest text-slate-600 hover:bg-slate-50">{t('communities.cancel')}</button>
               <button onClick={saveMembers} className="rounded-xl bg-red-500 px-5 py-2.5 text-xs font-bold uppercase tracking-widest text-white hover:bg-red-600">{t('communities.saveMembers')}</button>
             </div>
-          </Modal>
-        )}
-        {postModalOpen && (
-          <Modal title={t('communities.newPost')} onClose={() => setPostModalOpen(false)}>
-            <form onSubmit={submitPost} className="space-y-4">
-              <Field label={t('communities.postTitle')}><input className={inputClass} value={postForm.title} onChange={(e) => setPostForm({ ...postForm, title: e.target.value })} required /></Field>
-              <Field label={t('communities.content')}><textarea className={inputClass} rows={4} value={postForm.content} onChange={(e) => setPostForm({ ...postForm, content: e.target.value })} /></Field>
-              <div className="flex items-center gap-4">
-                <label className="flex items-center gap-2 text-sm text-slate-600"><input type="checkbox" checked={postForm.membersOnly} onChange={(e) => setPostForm({ ...postForm, membersOnly: e.target.checked })} />{t('communities.membersOnly')}</label>
-                <label className="flex items-center gap-2 text-sm text-slate-600"><input type="checkbox" checked={postForm.status === 'PUBLISHED'} onChange={(e) => setPostForm({ ...postForm, status: e.target.checked ? 'PUBLISHED' : 'DRAFT' })} />{t('communities.publish')}</label>
-              </div>
-              <ModalActions onCancel={() => setPostModalOpen(false)} cancel={t('communities.cancel')} save={t('communities.save')} />
-            </form>
           </Modal>
         )}
       </div>

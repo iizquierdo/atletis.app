@@ -43,8 +43,41 @@ const VALID_PROVIDERS: StorageProvider[] = ['Local', 'S3', 'GoogleCloud', 'Azure
 const asBool = (v: unknown): boolean =>
   v === true || String(v ?? '').trim().toLowerCase() === 'true';
 
-const normalizeKey = (key: string): string =>
+export const normalizeKey = (key: string): string =>
   String(key || '').replace(/\\/g, '/').replace(/^\/+/, '').replace(/^storage\//, '');
+
+/** Extract object key from any persisted file URL format. */
+export const extractObjectKey = (storedUrl: string): string | null => {
+  const url = String(storedUrl || '').trim();
+  if (!url) return null;
+
+  const storageMatch = url.match(/\/storage\/([^?#]+)/);
+  if (storageMatch?.[1]) return normalizeKey(storageMatch[1]);
+
+  if (url.startsWith('http://') || url.startsWith('https://')) {
+    try {
+      const parsed = new URL(url);
+      const path = parsed.pathname.replace(/^\/+/, '');
+      if (path) return normalizeKey(path);
+    } catch {
+      return null;
+    }
+  }
+
+  if (url.startsWith('/')) return normalizeKey(url.slice(1));
+  if (!url.includes('://')) return normalizeKey(url);
+  return null;
+};
+
+/** Rebuild a stored URL using the active storage configuration. */
+export const resolveStoredObjectUrl = (
+  storedUrl: string | null | undefined,
+  config: StorageConfig
+): string | null => {
+  const key = extractObjectKey(String(storedUrl || ''));
+  if (!key) return null;
+  return objectUrl(config, key);
+};
 
 /** On-disk root for the `Local` provider. Mirrors apps/api `STORAGE_ROOT`. */
 const storageRoot = (): string =>
@@ -142,6 +175,40 @@ export const objectUrl = (config: StorageConfig, key: string): string => {
     if (base) return `${base}/${k}`;
   }
   return `/storage/${k}`;
+};
+
+/** Latest uploaded avatar object key for a user (`avatar_<userId>_*.ext`), if any. */
+export const findLatestUserAvatarKey = async (
+  pool: Pool,
+  orgFolderName: string,
+  userId: string,
+  config?: StorageConfig
+): Promise<string | null> => {
+  const cfg = config || (await loadStorageConfig(pool));
+  const prefix = `${normalizeKey(orgFolderName)}/avatar_${userId}_`;
+
+  if (cfg.provider === 'S3') {
+    try {
+      const bucket = requireBucket(cfg.settings);
+      const { ListObjectsV2Command } = await import('@aws-sdk/client-s3');
+      const client = await getS3Client(cfg.settings);
+      const out = await (client as { send: (cmd: unknown) => Promise<{ Contents?: Array<{ Key?: string }> }> }).send(
+        new ListObjectsV2Command({ Bucket: bucket, Prefix: prefix })
+      );
+      const keys = (out.Contents || []).map((o) => o.Key).filter(Boolean) as string[];
+      if (!keys.length) return null;
+      return keys.sort().at(-1) ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  const dir = path.join(storageRoot(), normalizeKey(orgFolderName));
+  if (!fs.existsSync(dir)) return null;
+  const files = fs.readdirSync(dir).filter((f) => f.startsWith(`avatar_${userId}_`));
+  if (!files.length) return null;
+  const latest = files.sort().at(-1);
+  return latest ? `${normalizeKey(orgFolderName)}/${latest}` : null;
 };
 
 /** Stores a file with the active provider and returns its servable URL. */

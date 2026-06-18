@@ -1,5 +1,7 @@
 import express from 'express';
 import crypto from 'crypto';
+import path from 'path';
+import multer from 'multer';
 import type { Pool } from 'pg';
 import {
   resolveTenantAuthContext,
@@ -7,8 +9,11 @@ import {
   getRequesterUserId,
   ensureRole,
   NATACION_ROLES,
+  putObject,
   type RequesterScope
 } from '@sinapsis/module-sdk-server';
+
+const upload = multer({ storage: multer.memoryStorage() });
 
 interface ParentsModuleContext {
   app: express.Express;
@@ -38,6 +43,8 @@ export default function registerParentsModule({ app, pool }: ParentsModuleContex
     if (columnsEnsured) return;
     await pool.query('ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "phone" TEXT');
     await pool.query('ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "document" TEXT');
+    await pool.query('ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "imageUrl" TEXT');
+    await pool.query('ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "coverUrl" TEXT');
     columnsEnsured = true;
   };
 
@@ -67,7 +74,7 @@ export default function registerParentsModule({ app, pool }: ParentsModuleContex
   const loadParent = async (id: string) => {
     const r = await pool.query(
       `SELECT u.id, u.email, u.name, u."firstName", u."lastName", u.phone, u.document,
-              u."companyId", c.name AS "companyName", u."createdAt"
+              u."companyId", u."imageUrl", u."coverUrl", c.name AS "companyName", u."createdAt"
        FROM "User" u JOIN "Company" c ON c.id = u."companyId"
        WHERE u.id = $1 LIMIT 1`,
       [id]
@@ -126,10 +133,35 @@ export default function registerParentsModule({ app, pool }: ParentsModuleContex
         searchClause = `AND (LOWER(COALESCE(u."firstName",'') || ' ' || COALESCE(u."lastName",'')) LIKE LOWER($${params.length}) OR LOWER(u.email) LIKE LOWER($${params.length}) OR LOWER(COALESCE(u.document,'')) LIKE LOWER($${params.length}))`;
       }
 
+      const hasStudentTutor = await tableExists('StudentTutor');
+      const hasStudent = await tableExists('Student');
+      const hasClassStudent = await tableExists('ClassStudent');
+      const hasClass = await tableExists('Class');
+
+      let classSubquery = 'NULL';
+      if (hasClassStudent && hasClass) {
+        classSubquery = `(SELECT cl.name FROM "ClassStudent" cs JOIN "Class" cl ON cl.id = cs."classId" WHERE cs."studentId" = s.id AND cs.status = 'ACTIVE' LIMIT 1)`;
+      }
+      const childrenSubquery = (hasStudentTutor && hasStudent)
+        ? `COALESCE((
+            SELECT json_agg(json_build_object(
+              'id', s.id,
+              'firstName', s."firstName",
+              'lastName', s."lastName",
+              'imageUrl', s."imageUrl",
+              'className', ${classSubquery}
+            ) ORDER BY s."lastName", s."firstName")
+            FROM "StudentTutor" st
+            JOIN "Student" s ON s.id = st."studentId"
+            WHERE st."tutorId" = u.id AND st.active = true
+          ), '[]'::json)`
+        : `'[]'::json`;
+
       params.push(NATACION_ROLES.TUTOR);
       const result = await pool.query(
         `SELECT u.id, u.email, u.name, u."firstName", u."lastName", u.phone, u.document,
-                u."companyId", c.name AS "companyName", u."createdAt"
+                u."companyId", u."imageUrl", c.name AS "companyName", u."createdAt",
+                ${childrenSubquery} AS "children"
          FROM "User" u
          JOIN "Company" c ON c.id = u."companyId"
          JOIN "Role" r ON r.id = u."roleId"
@@ -215,6 +247,85 @@ export default function registerParentsModule({ app, pool }: ParentsModuleContex
     } catch (error: any) {
       if (String(error?.code) === '23505') return res.status(409).json({ error: 'A user with that email already exists.' });
       res.status(500).json({ error: 'Failed to update parent', details: error.message });
+    }
+  });
+
+  // ---- Get one --------------------------------------------------------------
+  router.get('/:id', async (req, res) => {
+    try {
+      if (!(await ensureActive())) return res.status(409).json({ error: 'Parents module is not active.' });
+      await ensureColumns();
+      const auth = await authStaff(req, res);
+      if (!auth) return;
+      const target = await findInScope(auth, req.params.id);
+      if (!target) return res.status(404).json({ error: 'Parent not found.' });
+      res.json(await loadParent(req.params.id));
+    } catch (error: any) {
+      res.status(500).json({ error: 'Failed to fetch parent', details: error.message });
+    }
+  });
+
+  // ---- Linked students (children) ------------------------------------------
+  router.get('/:id/students', async (req, res) => {
+    try {
+      if (!(await ensureActive())) return res.status(409).json({ error: 'Parents module is not active.' });
+      await ensureColumns();
+      const auth = await authStaff(req, res);
+      if (!auth) return;
+      const target = await findInScope(auth, req.params.id);
+      if (!target) return res.status(404).json({ error: 'Parent not found.' });
+
+      if (!(await tableExists('StudentTutor')) || !(await tableExists('Student'))) return res.json([]);
+
+      const hasClassStudent = await tableExists('ClassStudent');
+      const hasClass = await tableExists('Class');
+      const classSubquery = (hasClassStudent && hasClass)
+        ? `(SELECT cl.name FROM "ClassStudent" cs JOIN "Class" cl ON cl.id = cs."classId" WHERE cs."studentId" = s.id AND cs.status = 'ACTIVE' LIMIT 1)`
+        : 'NULL';
+
+      const result = await pool.query(
+        `SELECT s.id, s.code, s."firstName", s."lastName", s."imageUrl", s.status,
+                c.name AS "companyName", ${classSubquery} AS "className"
+         FROM "StudentTutor" st
+         JOIN "Student" s ON s.id = st."studentId"
+         JOIN "Company" c ON c.id = s."companyId"
+         WHERE st."tutorId" = $1 AND st.active = true
+         ORDER BY s."lastName" ASC, s."firstName" ASC`,
+        [req.params.id]
+      );
+      res.json(result.rows);
+    } catch (error: any) {
+      res.status(500).json({ error: 'Failed to fetch children', details: error.message });
+    }
+  });
+
+  // ---- Image upload (avatar / cover) ----------------------------------------
+  router.post('/:id/image', upload.single('file'), async (req, res) => {
+    try {
+      if (!(await ensureActive())) return res.status(409).json({ error: 'Parents module is not active.' });
+      await ensureColumns();
+      const auth = await authStaff(req, res);
+      if (!auth) return;
+      const target = await findInScope(auth, req.params.id);
+      if (!target) return res.status(404).json({ error: 'Parent not found.' });
+      const file = req.file;
+      if (!file) return res.status(400).json({ error: 'file is required.' });
+
+      const kind = String(req.body?.kind || 'logo').trim() === 'cover' ? 'cover' : 'logo';
+      const column = kind === 'cover' ? 'coverUrl' : 'imageUrl';
+
+      const orgResult = await pool.query('SELECT * FROM "Organization" LIMIT 1');
+      const org = orgResult.rows[0] || { name: 'org', id: '1' };
+      const ext = path.extname(file.originalname || '').toLowerCase();
+      const filename = `${kind}_${Date.now()}_${crypto.randomUUID().slice(0, 8)}${ext}`;
+      const orgFolderName = org.name.replace(/[^a-z0-9]/gi, '_').toLowerCase() + '_' + String(org.id).split('-')[0];
+      const objectKey = `${orgFolderName}/parents/${req.params.id}/${filename}`;
+      const { url: fileUrl } = await putObject({ pool, key: objectKey, buffer: file.buffer, contentType: file.mimetype });
+
+      await pool.query(`UPDATE "User" SET "${column}" = $1, "updatedAt" = NOW() WHERE id = $2`, [fileUrl, req.params.id]);
+      res.json(await loadParent(req.params.id));
+    } catch (error: any) {
+      res.status(500).json({ error: 'Failed to upload image', details: error.message });
     }
   });
 
