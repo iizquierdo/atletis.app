@@ -1,5 +1,5 @@
-import { useEffect, type ReactNode } from "react";
-import { HeroScene, SpotPanel, SpotFamily, SpotCoach, SpotBlocks } from "./illustrations";
+import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
+import { SportScene, SpotPanel, SpotFamily, SpotCoach, SpotBlocks, type SportVariant } from "./illustrations";
 
 /* ── Design tokens (Tailwind utility strings) ────────────────────────────── */
 const CARD = "rounded-3xl bg-white border border-slate-100 shadow-[0_8px_30px_rgb(0,0,0,0.04)]";
@@ -190,6 +190,168 @@ const HERO_STATS: { num: string; label: string; tone: Tone }[] = [
   { num: "+10", label: "Disciplinas deportivas", tone: "emerald" }
 ];
 
+type HeroSlide = { variant: SportVariant; sport: string; level: string; pct: number; achievement: string };
+
+const HERO_SLIDES: HeroSlide[] = [
+  { variant: "swim", sport: "Natación", level: "Delfín · Nivel 3", pct: 72, achievement: "Respiración bilateral" },
+  { variant: "soccer", sport: "Fútbol", level: "Goleador · Nivel 2", pct: 55, achievement: "Primer gol del año" },
+  { variant: "gym", sport: "Gimnasia", level: "Equilibrio · Nivel 4", pct: 84, achievement: "Rueda sin manos" },
+  { variant: "basket", sport: "Básquet", level: "Encestador · Nivel 3", pct: 66, achievement: "Doble limpio" }
+];
+
+/* Confetti burst — a handful of pieces flying up and out from an origin point.
+   Replays whenever its key changes (i.e. on each slide). */
+const CONFETTI = [
+  { dx: -30, dy: -36, r: -40, c: "#fb4e84" },
+  { dx: -12, dy: -48, r: 30, c: "#f59e0b" },
+  { dx: 14, dy: -44, r: -20, c: "#22c55e" },
+  { dx: 32, dy: -32, r: 50, c: "#3b82f6" },
+  { dx: -36, dy: -16, r: 20, c: "#a855f7" },
+  { dx: 38, dy: -12, r: -30, c: "#fb923c" },
+  { dx: -22, dy: -54, r: 60, c: "#06b6d4" },
+  { dx: 6, dy: -58, r: -50, c: "#fb4e84" },
+  { dx: 24, dy: -52, r: 15, c: "#f43f5e" },
+  { dx: -44, dy: -30, r: -60, c: "#16a34a" },
+  { dx: 46, dy: -34, r: 40, c: "#f59e0b" },
+  { dx: -4, dy: -40, r: -15, c: "#22c55e" }
+];
+
+function Confetti() {
+  return (
+    <span className="pointer-events-none absolute left-6 top-1 z-40 block h-0 w-0">
+      {CONFETTI.map((p, idx) => (
+        <span
+          key={idx}
+          className="confetti-piece"
+          style={
+            {
+              "--dx": `${p.dx}px`,
+              "--dy": `${p.dy}px`,
+              "--r": `${p.r}deg`,
+              background: p.c,
+              animationDelay: `${1.35 + idx * 0.014}s`
+            } as CSSProperties
+          }
+        />
+      ))}
+    </span>
+  );
+}
+
+/* Level card — fades in while the progress bar fills and the % counts up.
+   Remounted per slide (keyed by index) so the animation replays each time. */
+function LevelCard({ level, pct }: { level: string; pct: number }) {
+  const [shown, setShown] = useState(0);
+  useEffect(() => {
+    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
+      setShown(pct);
+      return;
+    }
+    let raf = 0;
+    let start = 0;
+    const delay = 450;
+    const dur = 1100;
+    const ease = (x: number) => 1 - Math.pow(1 - x, 3);
+    const tick = (t: number) => {
+      if (!start) start = t;
+      const e = Math.min(1, Math.max(0, (t - start - delay) / dur));
+      setShown(Math.round(ease(e) * pct));
+      if (e < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [pct]);
+
+  return (
+    <div className="hero-float absolute left-1 top-4 z-30 rounded-2xl bg-white shadow-lg shadow-slate-900/10 px-4 py-3 w-44">
+      <span className="text-[0.62rem] font-bold uppercase tracking-widest text-[#fb4e84]">Nivel actual</span>
+      <strong className="block mt-0.5 font-display text-base text-slate-900">{level}</strong>
+      <div className="mt-2 flex items-center gap-2">
+        <div className="flex-1 h-1.5 rounded-full bg-blue-100 overflow-hidden">
+          <span
+            className="hero-bar-fill block h-full rounded-full bg-gradient-to-r from-amber-400 to-orange-500"
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+        <span className="w-8 text-right text-[0.7rem] font-bold tabular-nums text-slate-600">{shown}%</span>
+      </div>
+    </div>
+  );
+}
+
+/* Auto-advancing carousel of sport scenes, each with its own level/achievement
+   cards. The floating cards live outside the clipped track so they can overhang
+   the card edges, and reflect the active slide. The inner track is `h-full` so
+   the card stretches to the column height instead of collapsing. A timer line
+   drives the auto-advance (via animationend) and pauses on hover. */
+function HeroCarousel() {
+  const [i, setI] = useState(0);
+  const [paused, setPaused] = useState(false);
+  const n = HERO_SLIDES.length;
+  const active = HERO_SLIDES[i];
+
+  return (
+    <div
+      className="reveal in relative h-full min-h-[24rem]"
+      onMouseEnter={() => setPaused(true)}
+      onMouseLeave={() => setPaused(false)}
+    >
+      {/* clipped sliding track — fills the column height */}
+      <div className="relative h-full overflow-hidden rounded-3xl border border-slate-100 shadow-[0_8px_30px_rgb(0,0,0,0.04)] bg-gradient-to-br from-blue-50 via-cyan-50 to-white">
+        <div className="pointer-events-none absolute -top-10 -right-10 z-0 h-40 w-40 rounded-full bg-purple-200/40 blur-2xl" />
+        {/* timer line — drives auto-advance, pauses on hover */}
+        <span
+          key={`timer-${i}`}
+          onAnimationEnd={() => setI((p) => (p + 1) % n)}
+          style={{ animationPlayState: paused ? "paused" : "running" }}
+          className="hero-timer absolute top-0 left-0 z-20 h-1 rounded-full bg-[#fb4e84]/70"
+        />
+        <div
+          className="flex h-full transition-transform duration-700 ease-out"
+          style={{ transform: `translateX(-${i * 100}%)` }}
+        >
+          {HERO_SLIDES.map((s) => (
+            <div key={s.variant} className="relative z-10 shrink-0 basis-full grid place-items-center p-5 sm:p-7">
+              <SportScene variant={s.variant} className="hero-scene w-full max-w-md h-auto" />
+            </div>
+          ))}
+        </div>
+        {/* dots */}
+        <div className="absolute bottom-3 left-1/2 z-20 flex -translate-x-1/2 gap-1.5">
+          {HERO_SLIDES.map((s, idx) => (
+            <button
+              key={s.variant}
+              type="button"
+              onClick={() => setI(idx)}
+              aria-label={`Mostrar ${s.sport}`}
+              className={`h-1.5 rounded-full transition-all ${idx === i ? "w-5 bg-[#fb4e84]" : "w-1.5 bg-slate-300 hover:bg-slate-400"}`}
+            />
+          ))}
+        </div>
+      </div>
+
+      {/* Level card — fades in, progress bar fills, % counts up */}
+      <LevelCard key={`lvl-${i}`} level={active.level} pct={active.pct} />
+
+      {/* Achievement notification — rises from below + confetti + trophy sheen */}
+      <div
+        key={`ach-${i}`}
+        className="hero-notif absolute right-1 bottom-7 z-30 flex items-center gap-2.5 rounded-2xl bg-white shadow-lg shadow-slate-900/10 pl-2 pr-3.5 py-2"
+      >
+        <Confetti />
+        <span className="hero-trophy relative grid place-items-center w-9 h-9 rounded-xl bg-amber-50 text-amber-600 overflow-hidden">
+          <Icon name="emoji_events" filled className="relative z-10 text-[1.3rem]" />
+          <span className="hero-sheen-el" />
+        </span>
+        <div>
+          <small className="block text-[0.6rem] font-bold uppercase tracking-wider text-amber-600">¡Nuevo logro!</small>
+          <p className="font-display text-sm font-bold text-slate-900">{active.achievement}</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function Hero() {
   return (
     <section id="top" className="relative overflow-hidden">
@@ -219,28 +381,8 @@ function Hero() {
             </div>
           </div>
 
-          {/* Illustration card */}
-          <div
-            className={`reveal in relative overflow-hidden rounded-3xl border border-slate-100 shadow-[0_8px_30px_rgb(0,0,0,0.04)] bg-gradient-to-br from-blue-50 via-cyan-50 to-white p-4 grid place-items-center min-h-[20rem]`}
-          >
-            <div className="pointer-events-none absolute -top-10 -right-10 h-40 w-40 rounded-full bg-purple-200/40 blur-2xl" />
-            <HeroScene className="relative w-full max-w-md h-auto" />
-            {/* floating product hints */}
-            <div className="absolute left-3 top-5 rounded-2xl bg-white shadow-lg shadow-slate-900/5 px-4 py-3 w-44">
-              <span className="text-[0.62rem] font-bold uppercase tracking-widest text-[#fb4e84]">Nivel actual</span>
-              <strong className="block mt-0.5 font-display text-base text-slate-900">Delfín · Nivel 3</strong>
-              <div className="mt-2 h-1.5 rounded-full bg-blue-100 overflow-hidden">
-                <span className="block h-full rounded-full bg-gradient-to-r from-amber-400 to-orange-500" style={{ width: "72%" }} />
-              </div>
-            </div>
-            <div className="absolute right-3 bottom-5 flex items-center gap-2.5 rounded-2xl bg-white shadow-lg shadow-slate-900/5 pl-2 pr-3.5 py-2">
-              <FlatIcon name="emoji_events" tone="amber" className="!w-9 !h-9 !rounded-xl" />
-              <div>
-                <small className="block text-[0.6rem] font-bold uppercase tracking-wider text-amber-600">¡Nuevo logro!</small>
-                <p className="font-display text-sm font-bold text-slate-900">Respiración bilateral</p>
-              </div>
-            </div>
-          </div>
+          {/* Illustration carousel */}
+          <HeroCarousel />
         </div>
 
         {/* Stat bento row */}

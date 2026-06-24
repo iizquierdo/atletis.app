@@ -8,7 +8,12 @@
 #   Build:  pnpm install && pnpm build:web
 #   Start:  pnpm start:web
 #
-# Root Directory for BOTH services must be the repo root (not apps/api or apps/web).
+# Landing service (static marketing site)
+#   Build:  pnpm install && pnpm build:landing
+#   Start:  pnpm start:landing
+#
+# Root Directory for ALL services must be the repo root (not apps/*), so the
+# pnpm workspace install + filters resolve correctly.
 
 [phases.setup]
 nixPkgs = ["nodejs_20"]
