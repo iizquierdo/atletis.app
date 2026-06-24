@@ -4,6 +4,7 @@ import { fileURLToPath } from 'url';
 import { createRequire } from 'node:module';
 import { PrismaPg } from '@prisma/adapter-pg';
 import pg from 'pg';
+import { ensureUserColumns } from '../src/ensureUserColumns.ts';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const apiRoot = path.resolve(here, '..');
@@ -14,16 +15,6 @@ dotenv.config({ path: path.join(apiRoot, '.env'), override: true });
 
 const require = createRequire(import.meta.url);
 const { PrismaClient } = require('@prisma/client');
-
-const ensureUserColumns = async (pool: pg.Pool) => {
-  await pool.query('ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "language" TEXT');
-  await pool.query('ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "accessCompanyIds" TEXT');
-  await pool.query('ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "sessionToken" TEXT');
-  await pool.query('ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "passwordResetToken" TEXT');
-  await pool.query('ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "passwordResetExpiresAt" TIMESTAMPTZ');
-  await pool.query('ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "imageUrl" TEXT');
-  await pool.query('ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "coverUrl" TEXT');
-};
 
 const listUserEmails = async (pool: pg.Pool) => {
   const result = await pool.query('SELECT email FROM "User" ORDER BY email ASC LIMIT 20');

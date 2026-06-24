@@ -1,6 +1,8 @@
 import { execSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import pg from 'pg';
+import { ensureUserColumns } from '../src/ensureUserColumns.ts';
 
 const apiRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -28,6 +30,14 @@ try {
 } catch {
   console.error('[api] FATAL: prisma migrate deploy failed. Check DATABASE_URL and Postgres logs.');
   process.exit(1);
+}
+
+const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
+try {
+  console.log('[api] ensuring User table columns...');
+  await ensureUserColumns(pool);
+} finally {
+  await pool.end();
 }
 
 await import('../src/main.ts');

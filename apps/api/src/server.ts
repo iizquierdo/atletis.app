@@ -3,6 +3,7 @@
 import express from 'express';
 import cors from 'cors';
 import { buildCorsOptions } from './cors';
+import { ensureUserColumns } from './ensureUserColumns';
 import { PrismaPg } from '@prisma/adapter-pg';
 import pg from 'pg';
 import fs from 'fs';
@@ -595,16 +596,6 @@ const loadCanonicalOutboundMailConfig = async (): Promise<{ provider: string; co
     };
 };
 
-const ensureUserColumns = async () => {
-    await pool.query('ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "language" TEXT');
-    await pool.query('ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "accessCompanyIds" TEXT');
-    await pool.query('ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "sessionToken" TEXT');
-    await pool.query('ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "passwordResetToken" TEXT');
-    await pool.query('ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "passwordResetExpiresAt" TIMESTAMPTZ');
-    await pool.query('ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "imageUrl" TEXT');
-    await pool.query('ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "coverUrl" TEXT');
-};
-
 const createSessionToken = () => crypto.randomBytes(48).toString('hex');
 const createResetToken = () => crypto.randomBytes(32).toString('hex');
 
@@ -951,7 +942,7 @@ const getPublicClientById = async (clientId: string) => {
 
 const requirePublicApiAuth = async (req: express.Request, res: express.Response, next: express.NextFunction) => {
     try {
-        await ensureUserColumns();
+        await ensureUserColumns(pool);
         const token = getTokenFromRequest(req);
         if (!token) return res.status(401).json({ error: 'Bearer token is required.' });
 
@@ -2420,7 +2411,7 @@ app.delete('/api/references/:id', async (req, res) => {
 
 app.post('/api/auth/login', async (req, res) => {
     try {
-        await ensureUserColumns();
+        await ensureUserColumns(pool);
         const email = String(req.body?.email || '').trim().toLowerCase();
         const password = String(req.body?.password || '');
 
@@ -2455,7 +2446,7 @@ app.post('/api/auth/login', async (req, res) => {
 
 app.post('/api/auth/register', async (req, res) => {
     try {
-        await ensureUserColumns();
+        await ensureUserColumns(pool);
         const firstName = String(req.body?.firstName || '').trim();
         const lastName = String(req.body?.lastName || '').trim();
         const email = String(req.body?.email || '').trim().toLowerCase();
@@ -2509,7 +2500,7 @@ app.post('/api/auth/register', async (req, res) => {
 
 app.post('/api/auth/forgot-password', async (req, res) => {
     try {
-        await ensureUserColumns();
+        await ensureUserColumns(pool);
 
         const email = String(req.body?.email || '').trim().toLowerCase();
         if (!email || !isValidEmail(email)) {
@@ -2554,7 +2545,7 @@ app.post('/api/auth/forgot-password', async (req, res) => {
 
 app.post('/api/auth/reset-password', async (req, res) => {
     try {
-        await ensureUserColumns();
+        await ensureUserColumns(pool);
         const token = String(req.body?.token || '').trim();
         const newPassword = String(req.body?.newPassword || '');
 
@@ -2591,7 +2582,7 @@ app.post('/api/auth/reset-password', async (req, res) => {
 
 app.get('/api/auth/session', async (req, res) => {
     try {
-        await ensureUserColumns();
+        await ensureUserColumns(pool);
         if (!String(req.headers.authorization || '').trim()) {
             return res.json({ user: null });
         }
@@ -2620,7 +2611,7 @@ app.get('/api/auth/session', async (req, res) => {
 
 app.post('/api/auth/logout', async (req, res) => {
     try {
-        await ensureUserColumns();
+        await ensureUserColumns(pool);
         const token = getTokenFromRequest(req);
         if (token) {
             await pool.query('UPDATE "User" SET "sessionToken" = NULL, "updatedAt" = NOW() WHERE "sessionToken" = $1', [token]);
@@ -2636,7 +2627,7 @@ app.get('/api/users', async (req, res) => {
     try {
         const ctx = await loadTenantAuthContext(req, res);
         if (!ctx) return;
-        await ensureUserColumns();
+        await ensureUserColumns(pool);
         const { companyId } = req.query;
         const companyIdStr = companyId ? String(companyId) : '';
         if (companyIdStr && !(await assertCompanyInTenantScope(pool, ctx, companyIdStr))) {
@@ -2689,7 +2680,7 @@ app.post('/api/users', async (req, res) => {
     try {
         const ctx = await loadTenantAuthContext(req, res);
         if (!ctx) return;
-        await ensureUserColumns();
+        await ensureUserColumns(pool);
         const { email, name, firstName, lastName, password, role, companyId, roleId, language, accessCompanyIds } = req.body;
         const accessCompanyIdsValue = Array.isArray(accessCompanyIds) ? accessCompanyIds.join(',') : '';
 
@@ -2738,7 +2729,7 @@ app.put('/api/users/:id', async (req, res) => {
     try {
         const ctx = await loadTenantAuthContext(req, res);
         if (!ctx) return;
-        await ensureUserColumns();
+        await ensureUserColumns(pool);
         const { id } = req.params;
         const { email, name, firstName, lastName, password, role, companyId, roleId, language, accessCompanyIds } = req.body;
         const accessCompanyIdsValue = Array.isArray(accessCompanyIds) ? accessCompanyIds.join(',') : '';
@@ -2797,7 +2788,7 @@ app.put('/api/users/:id', async (req, res) => {
 
 app.post('/api/users/:id/change-password', async (req, res) => {
     try {
-        await ensureUserColumns();
+        await ensureUserColumns(pool);
         const { id } = req.params;
         const token = getTokenFromRequest(req);
         const currentPassword = String(req.body?.currentPassword || '');
