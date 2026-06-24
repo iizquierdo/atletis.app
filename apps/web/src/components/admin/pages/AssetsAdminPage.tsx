@@ -135,7 +135,7 @@ const AssetsAdminPage: React.FC = () => {
     }
     const res = await adminFetch(`/api/admin/organizations/${oid}/companies`);
     if (!res.ok) {
-      setError(await parseError(res, 'No se pudieron cargar las compañías'));
+      setError(await parseError(res, 'No se pudieron cargar las sucursales'));
       setCompanies([]);
       return;
     }
@@ -304,7 +304,7 @@ const AssetsAdminPage: React.FC = () => {
       return;
     }
     if (!companies.length) {
-      setError('No hay compañías en esta organización.');
+      setError('No hay sucursales en esta organización.');
       return;
     }
     if (!products.length) {
@@ -358,11 +358,11 @@ const AssetsAdminPage: React.FC = () => {
       return;
     }
     if (!assetForm.companyIds.length) {
-      setError('Seleccione al menos una compañía.');
+      setError('Seleccione al menos una sucursal.');
       return;
     }
     if (!assetForm.referenceCompanyId || !assetForm.companyIds.includes(assetForm.referenceCompanyId)) {
-      setError('La compañía para numeración debe estar entre las asignadas.');
+      setError('La sucursal para numeración debe estar entre las asignadas.');
       return;
     }
     if (!editingAsset) {
@@ -510,7 +510,7 @@ const AssetsAdminPage: React.FC = () => {
         <div className="space-y-3">
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div className="min-w-[200px] space-y-1">
-              <Label>Filtrar por compañía</Label>
+              <Label>Filtrar por sucursal</Label>
               <select
                 className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
                 value={assetFilterCompany}
@@ -536,7 +536,7 @@ const AssetsAdminPage: React.FC = () => {
                   <th className="p-2 text-left">Producto</th>
                   <th className="p-2 text-left">Estado</th>
                   <th className="p-2 text-left">Serial</th>
-                  <th className="p-2 text-left">Compañías</th>
+                  <th className="p-2 text-left">Sucursales</th>
                   <th className="p-2 text-right">Acciones</th>
                 </tr>
               </thead>
@@ -687,7 +687,7 @@ const AssetsAdminPage: React.FC = () => {
           <div className="space-y-3 py-2">
             {!editingAsset && (
               <p className="text-xs text-muted-foreground">
-                El código (AST-…) se genera al guardar usando la compañía de numeración seleccionada.
+                El código (AST-…) se genera al guardar usando la sucursal de numeración seleccionada.
               </p>
             )}
             <div className="space-y-1">
@@ -705,7 +705,7 @@ const AssetsAdminPage: React.FC = () => {
               </select>
             </div>
             <div className="space-y-1">
-              <Label>Compañías asignadas</Label>
+              <Label>Sucursales asignadas</Label>
               <div className="max-h-36 space-y-1 overflow-auto rounded border p-2">
                 {companies.map((c) => (
                   <label key={c.id} className="flex items-center gap-2 text-sm">
@@ -716,7 +716,7 @@ const AssetsAdminPage: React.FC = () => {
               </div>
             </div>
             <div className="space-y-1">
-              <Label>Compañía para numeración</Label>
+              <Label>Sucursal para numeración</Label>
               <select
                 className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
                 value={assetForm.referenceCompanyId}

@@ -407,10 +407,12 @@ const UserManagement: React.FC<UserManagementProps> = ({ companyFilter, onSelect
 
   return (
     <div className="w-full animate-in fade-in duration-500 pb-12">
-      <div className="mb-6">
-        <h2 className="text-3xl font-extrabold tracking-tight text-slate-900">{t('settings.usersTitle')}</h2>
-        <p className="mt-1 font-medium text-slate-500">{t('settings.usersDesc')}</p>
-      </div>
+      {!companyFilter && (
+        <div className="mb-6">
+          <h2 className="text-3xl font-extrabold tracking-tight text-slate-900">{t('settings.usersTitle')}</h2>
+          <p className="mt-1 font-medium text-slate-500">{t('settings.usersDesc')}</p>
+        </div>
+      )}
 
       <Card className="overflow-hidden">
         <CardHeader className="min-h-0 flex-col gap-4 py-4 sm:flex-row sm:items-center sm:justify-between">
@@ -531,13 +533,13 @@ const UserManagement: React.FC<UserManagementProps> = ({ companyFilter, onSelect
                   </select>
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Compañía</label>
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Sucursal</label>
                   <select
                     value={userForm.companyId}
                     onChange={e => setUserForm(p => ({ ...p, companyId: e.target.value }))}
                     className="w-full px-4 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-red-400 focus:ring-1 focus:ring-red-400 transition-all font-medium"
                   >
-                    <option value="">Seleccionar compañía</option>
+                    <option value="">Seleccionar sucursal</option>
                     {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                   </select>
                 </div>
@@ -552,7 +554,7 @@ const UserManagement: React.FC<UserManagementProps> = ({ companyFilter, onSelect
                   </select>
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Acceso a compañías</label>
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Acceso a sucursales</label>
                   <div className="border border-slate-200 rounded-xl bg-slate-50/50 p-2 space-y-2">
                     <label className="flex items-center gap-2 px-2 py-1 rounded hover:bg-white text-sm font-semibold text-slate-700">
                       <input

@@ -1,14 +1,24 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { BarChart, Bar, ResponsiveContainer, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 import { useTranslation } from 'react-i18next';
+import { IdCard, Mail, Phone, Pencil } from 'lucide-react';
 import UserManagement from './UserManagement';
+import ProfileHeader from './shared/ProfileHeader';
+import { Button } from '@/components/ui/button';
 import { Company, SYSTEM_LANGUAGES } from '../types';
 
 interface CompanyProfileProps {
     company: Company;
     onEdit: (company: Company) => void;
     onRefresh: () => void;
+    onBack?: () => void;
 }
+
+const Info: React.FC<{ label: string; value?: string | null }> = ({ label, value }) => (
+    <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
+        <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">{label}</p>
+        <p className="mt-0.5 text-sm text-slate-800 break-words">{value || '—'}</p>
+    </div>
+);
 
 interface CompanyLocalizationSettings {
     dateFormat: string;
@@ -20,7 +30,7 @@ interface CompanyLocalizationSettings {
     defaultLanguage: string;
 }
 
-const CompanyProfile: React.FC<CompanyProfileProps> = ({ company, onEdit, onRefresh }) => {
+const CompanyProfile: React.FC<CompanyProfileProps> = ({ company, onEdit, onRefresh, onBack }) => {
     const { t } = useTranslation();
     const [activeTab, setActiveTab] = useState('Overview');
     const [isUploading, setIsUploading] = useState(false);
@@ -162,25 +172,6 @@ const CompanyProfile: React.FC<CompanyProfileProps> = ({ company, onEdit, onRefr
         }
     };
 
-    const handlePdfExport = async () => {
-        try {
-            const response = await fetch(`/api/companies/${company.id}/pdf`);
-            if (!response.ok) throw new Error('Failed to generate PDF');
-
-            const blob = await response.blob();
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `company_${company.id}.pdf`;
-            document.body.appendChild(a);
-            a.click();
-            a.remove();
-        } catch (error) {
-            console.error('Error exporting PDF:', error);
-            alert('Error exportando PDF');
-        }
-    };
-
     return (
         <div className="space-y-6 animate-in fade-in duration-500 pb-12">
             <input
@@ -192,127 +183,49 @@ const CompanyProfile: React.FC<CompanyProfileProps> = ({ company, onEdit, onRefr
             />
 
             {/* Header Profile Section */}
-            <div className="bg-white rounded-2xl border border-slate-200 px-8 pt-8 pb-4 shadow-sm">
-                <div className="flex flex-col lg:flex-row gap-8 items-start">
-                    <div className="relative group cursor-pointer" onClick={handleLogoClick}>
-                        <div className={`w-40 h-40 rounded-2xl shadow-lg border-4 border-white ${company.logoUrl ? 'bg-white' : 'bg-primary/10 text-primary'} flex items-center justify-center text-7xl font-bold overflow-hidden relative`}>
-                            {company.logoUrl ? (
-                                <img src={company.logoUrl} alt={company.name} className="w-full h-full object-contain p-2" />
-                            ) : (
-                                company.name[0]
-                            )}
-                            {isUploading && (
-                                <div className="absolute inset-0 bg-black/30 flex items-center justify-center">
-                                    <i className="fa-solid fa-circle-notch fa-spin text-white text-3xl"></i>
-                                </div>
-                            )}
-                            <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-all flex items-center justify-center opacity-0 group-hover:opacity-100">
-                                <i className="fa-solid fa-camera text-white text-2xl"></i>
-                            </div>
-                        </div>
-                        <span className={`absolute bottom-2 right-2 w-5 h-5 border-4 border-white rounded-full ${company.status === 'Active' ? 'bg-emerald-500' : 'bg-slate-300'}`}></span>
-                    </div>
-
-                    <div className="flex-1 space-y-4">
-                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                            <div>
-                                <h2 className="text-3xl font-bold text-slate-900 flex items-center gap-2">
-                                    {company.name}
-                                    <i className="fa-solid fa-circle-check text-primary text-xl"></i>
-                                </h2>
-                                <div className="flex flex-wrap gap-4 mt-2 text-slate-500 text-sm font-medium">
-                                    <span className="flex items-center gap-1.5"><i className="fa-solid fa-envelope text-slate-400"></i> {company.email || t('settings.noEmail') || 'No email'}</span>
-                                    <span className="flex items-center gap-1.5"><i className="fa-solid fa-phone text-slate-400"></i> {company.phone || t('settings.noPhone') || 'No phone'}</span>
-                                </div>
-                            </div>
-                            <div className="flex gap-2">
-                                <button
-                                    onClick={() => onEdit(company)}
-                                    className="px-5 py-2 bg-slate-50 text-slate-700 font-medium text-sm rounded-lg border border-slate-200 hover:bg-slate-100 transition-all"
-                                >
-                                    {t('settings.edit') || 'Edit'}
-                                </button>
-                                <button
-                                    onClick={handlePdfExport}
-                                    className="rounded-lg bg-primary px-6 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-all hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2"
-                                >
-                                    {t('settings.pdfDocument') || 'PDF Document'}
-                                </button>
-                                <button className="px-3 py-2 bg-slate-50 text-slate-400 rounded-lg border border-slate-200 hover:text-slate-600">
-                                    <i className="fa-solid fa-ellipsis"></i>
-                                </button>
-                            </div>
-                        </div>
-
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
-                            <div className="border border-dashed border-slate-200 rounded-2xl p-4">
-                                <div className="flex items-center gap-2 text-emerald-600 text-xs font-bold mb-1">
-                                    <i className="fa-solid fa-arrow-up"></i> 1500$
-                                </div>
-                                <p className="text-slate-500 text-sm font-medium italic">{t('settings.revenue') || 'Revenue'}</p>
-                            </div>
-                            <div className="border border-dashed border-slate-200 rounded-2xl p-4">
-                                <div className="flex items-center gap-2 text-rose-600 text-xs font-bold mb-1">
-                                    <i className="fa-solid fa-arrow-down"></i> 12
-                                </div>
-                                <p className="text-slate-500 text-sm font-medium italic">{t('sidebar.users') || 'Users'}</p>
-                            </div>
-                            <div className="border border-dashed border-slate-200 rounded-2xl p-4">
-                                <div className="flex items-center gap-2 text-emerald-600 text-xs font-bold mb-1">
-                                    <i className="fa-solid fa-arrow-up"></i> 99.9%
-                                </div>
-                                <p className="text-slate-500 text-sm font-medium italic">{t('settings.uptime') || 'Uptime'}</p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <nav className="flex gap-8 mt-10 border-t border-slate-100 pt-3 pb-0 overflow-x-auto no-scrollbar">
-                    {[
-                        { id: 'Overview', label: t('dashboard.overview') },
-                        { id: 'Users', label: t('sidebar.users') },
-                        { id: 'Settings', label: t('sidebar.settings') }
-                    ].map((tab) => (
-                        <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`border-b-2 py-[3px] text-xs font-bold uppercase tracking-wide transition-all ${activeTab === tab.id ? 'border-primary text-primary' : 'border-transparent text-slate-400 hover:text-slate-600'}`}>
-                            {tab.label}
-                        </button>
-                    ))}
-                </nav>
-            </div>
+            <ProfileHeader
+                title={company.name}
+                initials={(company.name?.charAt(0) || '?').toUpperCase()}
+                imageUrl={company.logoUrl}
+                onLogoClick={handleLogoClick}
+                meta={[
+                    ...(company.code ? [{ icon: <IdCard className="size-4" />, text: company.code }] : []),
+                    { icon: <Mail className="size-4" />, text: company.email || t('settings.noEmail') || 'Sin email' },
+                    { icon: <Phone className="size-4" />, text: company.phone || t('settings.noPhone') || 'Sin teléfono' },
+                    { text: company.status === 'Active' ? (t('settings.active') || 'Activo') : (t('settings.inactive') || 'Inactivo') }
+                ]}
+                tabs={[
+                    { id: 'Overview', label: t('dashboard.overview') },
+                    { id: 'Users', label: t('sidebar.users') },
+                    { id: 'Settings', label: t('sidebar.settings') }
+                ]}
+                activeTab={activeTab}
+                onTabChange={setActiveTab}
+                onBack={onBack}
+                actions={
+                    <Button type="button" variant="outline" onClick={() => onEdit(company)}>
+                        <Pencil className="size-3.5" /> {t('settings.edit') || 'Editar'}
+                    </Button>
+                }
+            />
 
             {activeTab === 'Overview' && (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-in slide-in-from-bottom-2">
-                    <div className="bg-white rounded-2xl border border-slate-200 p-8 shadow-sm space-y-6">
-                        <h3 className="border-b border-slate-100 pb-4 text-lg font-bold text-primary">{t('settings.companyDetails') || 'Detalles de la Compañía'}</h3>
-                        <div className="grid grid-cols-2 gap-y-4 text-sm">
-                            <div className="text-slate-400 font-medium">{t('settings.code') || 'Código'}</div>
-                            <div className="text-slate-900 font-bold">{company.code || '—'}</div>
-
-
-                            <div className="text-slate-400 font-medium">{t('settings.vatCode') || 'VAT / Tax ID'}</div>
-                            <div className="text-slate-900 font-bold">{company.vatCode || '—'}</div>
-
-                            <div className="text-slate-400 font-medium">{t('settings.type') || 'Tipo'}</div>
-                            <div className="text-slate-900 font-bold">{company.type || '—'}</div>
-
-                            <div className="text-slate-400 font-medium">{t('settings.website') || 'Website'}</div>
-                            <div className="text-blue-600 font-bold truncate">
-                                {company.website ? <a href={company.website} target="_blank" rel="noreferrer">{company.website}</a> : '—'}
-                            </div>
-
-                            <div className="text-slate-400 font-medium">{t('settings.language') || 'Idioma'}</div>
-                            <div className="text-slate-900 font-bold">{company.language || '—'}</div>
-
-                            <div className="text-slate-400 font-medium">{t('settings.contact') || 'Contact'}</div>
-                            <div className="text-slate-900 font-bold">{company.phone || '—'}</div>
-
-                            <div className="text-slate-400 font-medium">{t('settings.userEmail') || 'Email'}</div>
-                            <div className="text-slate-900 font-bold break-all">{company.email || '—'}</div>
+                    <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+                        <h3 className="mb-4 border-b border-slate-100 pb-3 text-xs font-bold uppercase tracking-widest text-slate-400">{t('settings.companyDetails') || 'Detalles de la sucursal'}</h3>
+                        <div className="grid gap-4 sm:grid-cols-2">
+                            <Info label={t('settings.code') || 'Código'} value={company.code} />
+                            <Info label={t('settings.vatCode') || 'CUIL'} value={company.vatCode} />
+                            <Info label={t('settings.type') || 'Tipo'} value={company.type} />
+                            <Info label={t('settings.website') || 'Website'} value={company.website} />
+                            <Info label={t('settings.language') || 'Idioma'} value={company.language} />
+                            <Info label={t('settings.contact') || 'Contacto'} value={company.phone} />
+                            <div className="sm:col-span-2"><Info label={t('settings.email') || 'Email'} value={company.email} /></div>
                         </div>
                     </div>
 
-                    <div className="bg-white rounded-2xl border border-slate-200 p-8 shadow-sm space-y-6">
-                        <h3 className="border-b border-slate-100 pb-4 text-lg font-bold text-primary">{t('settings.address') || 'Dirección'}</h3>
+                    <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-6">
+                        <h3 className="mb-4 border-b border-slate-100 pb-3 text-xs font-bold uppercase tracking-widest text-slate-400">{t('settings.address') || 'Dirección'}</h3>
                         <div className="space-y-4">
                             <div className="flex gap-3">
                                 <div className="w-10 h-10 bg-slate-50 rounded-lg flex items-center justify-center text-slate-400">

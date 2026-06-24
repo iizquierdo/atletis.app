@@ -509,6 +509,7 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({ view, onSubTitleChange,
     const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null);
     const [companyFormOpen, setCompanyFormOpen] = useState(false);
     const [editingCompany, setEditingCompany] = useState<Company | null>(null);
+    const [companyErrors, setCompanyErrors] = useState<Record<string, string>>({});
     const [companyForm, setCompanyForm] = useState<Omit<Company, 'id' | 'organizationId'>>({
         code: '', name: '', description: '', city: '', state: '',
         country: '', website: '', vatCode: '', notes: '',
@@ -521,7 +522,7 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({ view, onSubTitleChange,
 
     useEffect(() => {
         if (view === 'Companies') {
-            const url = companyFilter ? `/api/companies?companyId=${companyFilter}&t=${Date.now()}` : `/api/companies?t=${Date.now()}`;
+            const url = companyFilter ? `/api/companies?scope=org&companyId=${companyFilter}&t=${Date.now()}` : `/api/companies?scope=org&t=${Date.now()}`;
             fetch(url)
                 .then(res => res.ok ? res.json() : [])
                 .then(data => setCompanies(data))
@@ -604,11 +605,24 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({ view, onSubTitleChange,
             setEditingCompany(null);
             setCompanyForm({ code: '', name: '', description: '', city: '', state: '', country: '', website: '', vatCode: '', notes: '', status: 'Active', language: '', dateFormat: '', timeFormat: '', timezone: '', baseCurrency: '', moneyFormat: '', currencyPosition: '', defaultLanguage: '', type: '', category: '', email: '', phone: '', logoUrl: '', address: '', zipcode: '' });
         }
+        setCompanyErrors({});
         setCompanyFormOpen(true);
     };
 
     const handleSaveCompany = async (e: React.FormEvent) => {
         e.preventDefault();
+
+        // Client-side validation: highlight the field instead of failing on the server.
+        const errors: Record<string, string> = {};
+        if (!companyForm.name?.trim()) {
+            errors.name = t('settings.fieldRequired') || 'Este campo es obligatorio.';
+        }
+        if (Object.keys(errors).length > 0) {
+            setCompanyErrors(errors);
+            return;
+        }
+        setCompanyErrors({});
+
         try {
             const method = editingCompany ? 'PUT' : 'POST';
             const url = editingCompany ? `/api/companies/${editingCompany.id}` : '/api/companies';
@@ -618,22 +632,28 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({ view, onSubTitleChange,
                 body: JSON.stringify(companyForm)
             });
             if (res.ok) {
-                const url = companyFilter ? `/api/companies?companyId=${companyFilter}&t=${Date.now()}` : `/api/companies?t=${Date.now()}`;
+                const url = companyFilter ? `/api/companies?scope=org&companyId=${companyFilter}&t=${Date.now()}` : `/api/companies?scope=org&t=${Date.now()}`;
                 const updated = await fetch(url).then(r => r.json());
                 setCompanies(updated);
                 setCompanyFormOpen(false);
                 window.dispatchEvent(new CustomEvent('companiesUpdated'));
             } else {
-                alert('Error al guardar la compañía');
+                const errData = await res.json().catch(() => null);
+                // Field-specific error from the API -> mark that input red.
+                if (errData?.field) {
+                    setCompanyErrors({ [errData.field]: errData.error || (t('settings.fieldRequired') || 'Campo inválido.') });
+                } else {
+                    setCompanyErrors({ _general: errData?.error || errData?.details || 'Error al guardar la sucursal' });
+                }
             }
         } catch (err) {
             console.error(err);
-            alert('Error al conectar con el servidor');
+            setCompanyErrors({ _general: 'Error al conectar con el servidor' });
         }
     };
 
     const handleDeleteCompany = async (id: string) => {
-        if (!confirm('¿Eliminar esta compañía?')) return;
+        if (!confirm('¿Eliminar esta sucursal?')) return;
         try {
             await fetch(`/api/companies/${id}`, { method: 'DELETE' });
             setCompanies(prev => prev.filter(c => c.id !== id));
@@ -1367,11 +1387,12 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({ view, onSubTitleChange,
         if (selectedCompanyId && selectedCompany) {
             return (
                 <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-500">
-                    <CompanyProfile 
-                        company={selectedCompany} 
+                    <CompanyProfile
+                        company={selectedCompany}
                         onEdit={openCompanyModal}
+                        onBack={() => setSelectedCompanyId(null)}
                         onRefresh={() => {
-                            const url = companyFilter ? `/api/companies?companyId=${companyFilter}&t=${Date.now()}` : `/api/companies?t=${Date.now()}`;
+                            const url = companyFilter ? `/api/companies?scope=org&companyId=${companyFilter}&t=${Date.now()}` : `/api/companies?scope=org&t=${Date.now()}`;
                             fetch(url).then(r => r.json()).then(setCompanies);
                         }}
                     />
@@ -1635,7 +1656,7 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({ view, onSubTitleChange,
 
     const categoryItemScopeLabel = (item: CategoryItem) => {
         if (item.isSystem) return 'Sistema';
-        if (!item.companyId) return 'Todas las compañías';
+        if (!item.companyId) return 'Todas las sucursales';
         return scopeCompanies.find((c) => c.id === item.companyId)?.name || item.companyId;
     };
 
@@ -1811,7 +1832,7 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({ view, onSubTitleChange,
                             <div className="p-4 bg-slate-50 rounded-lg border border-slate-100 animate-in slide-in-from-top-2">
                                 <p className="text-sm text-slate-600 flex items-center gap-2">
                                     <i className="fa-solid fa-circle-info text-blue-500"></i>
-                                    {t('settings.localPathInfo') || 'Los archivos se almacenarán localmente en la carpeta /storage de este servidor, organizados por compañía.'}
+                                    {t('settings.localPathInfo') || 'Los archivos se almacenarán localmente en la carpeta /storage de este servidor, organizados por sucursal.'}
                                 </p>
                             </div>
                         )}
@@ -2131,10 +2152,10 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({ view, onSubTitleChange,
                         <div className="flex justify-between items-center px-8 pt-7 pb-5 border-b border-slate-100">
                             <div>
                                 <h3 className="text-xl font-bold text-slate-900">
-                                    {editingCompany ? 'Editar compañía' : 'Nueva compañía'}
+                                    {editingCompany ? 'Editar sucursal' : 'Nueva sucursal'}
                                 </h3>
                                 <p className="text-slate-400 text-sm font-medium mt-0.5">
-                                    {editingCompany ? `Editando: ${editingCompany.name}` : 'Completa los datos para registrar la compañía'}
+                                    {editingCompany ? `Editando: ${editingCompany.name}` : 'Completa los datos para registrar la sucursal'}
                                 </p>
                             </div>
                             <button onClick={() => setCompanyFormOpen(false)} className="w-8 h-8 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 flex items-center justify-center transition-all">
@@ -2145,21 +2166,23 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({ view, onSubTitleChange,
                         {/* Modal body - scrollable */}
                         <form onSubmit={handleSaveCompany} className="flex flex-col flex-1 overflow-hidden">
                             <div className="overflow-y-auto flex-1 px-8 py-6 space-y-6">
+                                {companyErrors._general && (
+                                    <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+                                        {companyErrors._general}
+                                    </div>
+                                )}
                                 {/* Basic Info */}
                                 <div>
                                     <h4 className="text-xs font-bold text-primary uppercase tracking-widest mb-4 pb-2 border-b border-slate-100">{t('settings.generalInfo')}</h4>
                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                        <div className="space-y-1.5">
-                                            <label className="text-xs font-semibold text-slate-600 uppercase tracking-wide">{t('settings.companyCode')}</label>
-                                            <input type="text" value={companyForm.code} onChange={e => setCompanyForm(p => ({ ...p, code: e.target.value }))} placeholder="e.g. COMP-001" className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary placeholder-slate-400 transition-all font-medium" />
-                                        </div>
-                                        <div className="md:col-span-2 space-y-1.5">
+                                        <div className="md:col-span-3 space-y-1.5">
                                             <label className="text-xs font-semibold text-slate-600 uppercase tracking-wide">{t('settings.name')} <span className="text-primary">*</span></label>
-                                            <input required type="text" value={companyForm.name} onChange={e => setCompanyForm(p => ({ ...p, name: e.target.value }))} placeholder={t('settings.name')} className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary placeholder-slate-400 transition-all font-medium" />
+                                            <input type="text" value={companyForm.name} onChange={e => { setCompanyForm(p => ({ ...p, name: e.target.value })); if (companyErrors.name) setCompanyErrors(prev => ({ ...prev, name: '' })); }} placeholder={t('settings.name')} className={`w-full px-3 py-2 bg-white border rounded-lg text-sm focus:outline-none focus:ring-1 placeholder-slate-400 transition-all font-medium ${companyErrors.name ? 'border-red-400 focus:border-red-500 focus:ring-red-500' : 'border-slate-200 focus:border-primary focus:ring-primary'}`} />
+                                            {companyErrors.name && <p className="text-xs font-medium text-red-600">{companyErrors.name}</p>}
                                         </div>
                                         <div className="md:col-span-3 space-y-1.5">
                                             <label className="text-xs font-semibold text-slate-600 uppercase tracking-wide">{t('settings.description')}</label>
-                                            <input type="text" value={companyForm.description} onChange={e => setCompanyForm(p => ({ ...p, description: e.target.value }))} placeholder={t('settings.description')} className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary placeholder-slate-400 transition-all font-medium" />
+                                            <textarea rows={3} value={companyForm.description} onChange={e => setCompanyForm(p => ({ ...p, description: e.target.value }))} placeholder={t('settings.description')} className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary placeholder-slate-400 transition-all font-medium resize-none" />
                                         </div>
                                         <div className="space-y-1.5">
                                             <label className="text-xs font-semibold text-slate-600 uppercase tracking-wide">{t('settings.vatCode')}</label>
@@ -2172,13 +2195,13 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({ view, onSubTitleChange,
                                         <div className="space-y-1.5">
                                             <label className="text-xs font-semibold text-slate-600 uppercase tracking-wide">{t('settings.language')}</label>
                                             <select value={companyForm.language} onChange={e => setCompanyForm(p => ({ ...p, language: e.target.value }))} className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all font-medium text-slate-700">
-                                                <option value="">{t('settings.selectLanguage') || 'Select language'}</option>
-                                                <option value="en">English</option>
-                                                <option value="es">Español</option>
+                                                <option value="">{t('settings.selectLanguage')}</option>
+                                                <option value="en">{t('settings.langEnglish')}</option>
+                                                <option value="es">{t('settings.langSpanish')}</option>
                                             </select>
                                         </div>
                                         <div className="space-y-1.5">
-                                            <label className="text-xs font-semibold text-slate-600 uppercase tracking-wide">{t('settings.userEmail')}</label>
+                                            <label className="text-xs font-semibold text-slate-600 uppercase tracking-wide">{t('settings.email')}</label>
                                             <input type="email" value={companyForm.email} onChange={e => setCompanyForm(p => ({ ...p, email: e.target.value }))} placeholder="email@company.com" className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary placeholder-slate-400 transition-all font-medium" />
                                         </div>
                                         <div className="space-y-1.5">
@@ -2191,8 +2214,8 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({ view, onSubTitleChange,
                                 {/* Location */}
                                 <div>
                                     <h4 className="text-xs font-bold text-primary uppercase tracking-widest mb-4 pb-2 border-b border-slate-100">{t('settings.location')}</h4>
-                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                        <div className="md:col-span-3 space-y-1.5">
+                                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                                        <div className="md:col-span-4 space-y-1.5">
                                             <label className="text-xs font-semibold text-slate-600 uppercase tracking-wide">{t('settings.address')}</label>
                                             <input type="text" value={companyForm.address} onChange={e => setCompanyForm(p => ({ ...p, address: e.target.value }))} placeholder={t('settings.address')} className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary placeholder-slate-400 transition-all font-medium" />
                                         </div>
@@ -2225,15 +2248,6 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({ view, onSubTitleChange,
                                                 <option value="">{t('settings.selectType')}</option>
                                                 {availableTypes.map(t => (
                                                     <option key={t.id} value={t.name}>{t.name}</option>
-                                                ))}
-                                            </select>
-                                        </div>
-                                        <div className="space-y-1.5">
-                                            <label className="text-xs font-semibold text-slate-600 uppercase tracking-wide">{t('settings.category')}</label>
-                                            <select value={companyForm.category} onChange={e => setCompanyForm(p => ({ ...p, category: e.target.value }))} className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all font-medium text-slate-700">
-                                                <option value="">{t('settings.selectCategory')}</option>
-                                                {availableCats.map(c => (
-                                                    <option key={c.id} value={c.name}>{c.name}</option>
                                                 ))}
                                             </select>
                                         </div>
@@ -2352,13 +2366,13 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({ view, onSubTitleChange,
                                     />
                                 </div>
                                 <div className="space-y-2">
-                                    <label className="text-sm font-bold text-slate-700">Compañía (opcional)</label>
+                                    <label className="text-sm font-bold text-slate-700">Sucursal (opcional)</label>
                                     <select
                                         value={itemForm.targetCompanyId}
                                         onChange={(e) => setItemForm((p) => ({ ...p, targetCompanyId: e.target.value }))}
                                         className="w-full px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm shadow-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all font-medium"
                                     >
-                                        <option value="">Todas las compañías del tenant</option>
+                                        <option value="">Todas las sucursales del tenant</option>
                                         {scopeCompanies.map((c) => (
                                             <option key={c.id} value={c.id}>
                                                 {c.name}

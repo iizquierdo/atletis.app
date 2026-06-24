@@ -499,15 +499,28 @@ app.get('/api/system/module-apis/openapi-index', (req, res) => {
 });
 const storage = multer.memoryStorage();
 const upload = multer({ storage: storage });
+// Columns the company form can write to (whitelist for the dynamic INSERT/UPDATE).
+const COMPANY_WRITABLE_COLUMNS = [
+    'code', 'name', 'description', 'category', 'city', 'country', 'language',
+    'notes', 'address', 'zipcode', 'state', 'status', 'type', 'vatCode',
+    'website', 'email', 'phone', 'logoUrl',
+    'dateFormat', 'timeFormat', 'timezone', 'baseCurrency', 'moneyFormat',
+    'currencyPosition', 'defaultLanguage'
+] as const;
+
 const ensureCompanyZipcodeColumn = async () => {
-    await pool.query('ALTER TABLE "Company" ADD COLUMN IF NOT EXISTS "zipcode" TEXT');
-    await pool.query('ALTER TABLE "Company" ADD COLUMN IF NOT EXISTS "dateFormat" TEXT');
-    await pool.query('ALTER TABLE "Company" ADD COLUMN IF NOT EXISTS "timeFormat" TEXT');
-    await pool.query('ALTER TABLE "Company" ADD COLUMN IF NOT EXISTS "timezone" TEXT');
-    await pool.query('ALTER TABLE "Company" ADD COLUMN IF NOT EXISTS "baseCurrency" TEXT');
-    await pool.query('ALTER TABLE "Company" ADD COLUMN IF NOT EXISTS "moneyFormat" TEXT');
-    await pool.query('ALTER TABLE "Company" ADD COLUMN IF NOT EXISTS "currencyPosition" TEXT');
-    await pool.query('ALTER TABLE "Company" ADD COLUMN IF NOT EXISTS "defaultLanguage" TEXT');
+    // Idempotently make sure every optional Company column exists, so the dynamic
+    // INSERT/UPDATE never fails with "column ... does not exist" on an old DB.
+    const textColumns = [
+        'zipcode', 'dateFormat', 'timeFormat', 'timezone', 'baseCurrency', 'moneyFormat',
+        'currencyPosition', 'defaultLanguage', 'description', 'category', 'city', 'country',
+        'language', 'notes', 'address', 'state', 'type', 'vatCode', 'website', 'email',
+        'phone', 'logoUrl', 'code'
+    ];
+    for (const col of textColumns) {
+        await pool.query(`ALTER TABLE "Company" ADD COLUMN IF NOT EXISTS "${col}" TEXT`);
+    }
+    await pool.query(`ALTER TABLE "Company" ADD COLUMN IF NOT EXISTS "status" TEXT NOT NULL DEFAULT 'Active'`);
 };
 
 const stripOrganizationSmtpFields = (body: unknown): Record<string, unknown> => {
@@ -686,6 +699,23 @@ const loadTenantAuthContext = async (req: express.Request, res: express.Response
 const accessibleCompanyIdsForUser = (ctx: TenantAuthContext): string[] => {
     const raw = [ctx.primaryCompanyId, ...ctx.accessCompanyIds].map((x) => String(x || '').trim()).filter(Boolean);
     return [...new Set(raw)];
+};
+
+/** True when the user is an Administrator (legacy role or assigned role name). */
+const isOrgAdmin = async (poolRef: pg.Pool, userId: string): Promise<boolean> => {
+    const r = await poolRef.query(
+        `SELECT LOWER(COALESCE(u.role, '')) AS "legacyRole", LOWER(COALESCE(rl.name, '')) AS "roleName"
+         FROM "User" u
+         LEFT JOIN "Role" rl ON rl.id = u."roleId"
+         WHERE u.id = $1
+         LIMIT 1`,
+        [userId]
+    );
+    const row = r.rows[0];
+    if (!row) return false;
+    const legacy = String(row.legacyRole || '');
+    const roleName = String(row.roleName || '');
+    return legacy === 'administrator' || legacy === 'admin' || roleName === 'administrator';
 };
 
 const assertCompanyInTenantScope = async (pool: pg.Pool, ctx: TenantAuthContext, companyId: string) => {
@@ -1916,20 +1946,30 @@ app.get('/api/companies', async (req, res) => {
     try {
         const ctx = await loadTenantAuthContext(req, res);
         if (!ctx) return;
-        const accessibleIds = accessibleCompanyIdsForUser(ctx);
-        if (!accessibleIds.length) {
-            return res.json([]);
-        }
 
-        const { companyId, status } = req.query;
+        const { companyId, status, scope } = req.query;
         const filterCompanyId = companyId ? String(companyId) : '';
-        if (filterCompanyId && !accessibleIds.includes(filterCompanyId)) {
-            return res.status(403).json({ error: 'Not allowed to access this company.' });
-        }
 
-        let query =
-            'SELECT * FROM "Company" WHERE "organizationId" = $1 AND id = ANY($2::text[])';
-        const params: unknown[] = [ctx.organizationId, accessibleIds];
+        // Management scope: administrators can list every company in their
+        // organization (e.g. the Sucursales settings page), not just the ones
+        // they have been granted access to in the company switcher.
+        const wantsOrgScope = String(scope || '').toLowerCase() === 'org';
+        const isAdmin = wantsOrgScope ? await isOrgAdmin(pool, ctx.userId) : false;
+
+        const params: unknown[] = [ctx.organizationId];
+        let query = 'SELECT * FROM "Company" WHERE "organizationId" = $1';
+
+        if (!(wantsOrgScope && isAdmin)) {
+            const accessibleIds = accessibleCompanyIdsForUser(ctx);
+            if (!accessibleIds.length) {
+                return res.json([]);
+            }
+            if (filterCompanyId && !accessibleIds.includes(filterCompanyId)) {
+                return res.status(403).json({ error: 'Not allowed to access this company.' });
+            }
+            params.push(accessibleIds);
+            query += ` AND id = ANY($${params.length}::text[])`;
+        }
 
         if (filterCompanyId) {
             params.push(filterCompanyId);
@@ -2027,6 +2067,14 @@ app.post('/api/companies', async (req, res) => {
     const client = await pool.connect();
     try {
         await ensureCompanyZipcodeColumn();
+        const body = (req.body || {}) as Record<string, unknown>;
+
+        // Required field validation -> 400 with the offending field for inline UI errors.
+        const name = String(body.name ?? '').trim();
+        if (!name) {
+            return res.status(400).json({ error: 'El nombre es obligatorio.', field: 'name' });
+        }
+
         const orgData = await client.query(
             'SELECT id, "dateFormat", "timeFormat", "timezone", "moneyFormat", "currencyPosition", "defaultLanguage", "baseCurrency" FROM "Organization" WHERE id = $1 LIMIT 1',
             [ctx.organizationId]
@@ -2034,7 +2082,7 @@ app.post('/api/companies', async (req, res) => {
         const org = orgData.rows[0];
         if (!org) return res.status(400).json({ error: 'Organization not found' });
 
-        const localizationDefaults = {
+        const localizationDefaults: Record<string, string> = {
             dateFormat: org.dateFormat || 'YYYY/MM/DD',
             timeFormat: org.timeFormat || 'HH:mm',
             timezone: org.timezone || 'UTC',
@@ -2044,13 +2092,26 @@ app.post('/api/companies', async (req, res) => {
             baseCurrency: org.baseCurrency || 'USD'
         };
 
-        const incomingData = req.body || {};
-        const data = { ...incomingData, organizationId: org.id };
+        // Build the row from a whitelist of real columns only, so unexpected keys
+        // can never break the dynamic INSERT. `id` has no DB default (Prisma
+        // normally generates it), so we must supply it for the raw INSERT.
+        const data: Record<string, unknown> = { id: crypto.randomUUID(), organizationId: org.id };
+        for (const col of COMPANY_WRITABLE_COLUMNS) {
+            if (body[col] === undefined) continue;
+            let value = body[col];
+            // `code` is UNIQUE: '' would collide with another code-less company
+            // (NULLs don't collide, '' does). Normalize blank -> null.
+            if (col === 'code' && typeof value === 'string' && value.trim() === '') {
+                value = null;
+            }
+            data[col] = value;
+        }
+        data.name = name;
 
         for (const [key, fallback] of Object.entries(localizationDefaults)) {
-            const value = (data as any)[key];
+            const value = data[key];
             if (value === undefined || value === null || value === '') {
-                (data as any)[key] = fallback;
+                data[key] = fallback;
             }
         }
         const keys = Object.keys(data);
@@ -2073,6 +2134,13 @@ app.post('/api/companies', async (req, res) => {
             /* ignore */
         }
         console.error('Error creating company:', error);
+        // 23505 = unique_violation (Postgres). Most likely a duplicate company code.
+        if (error?.code === '23505') {
+            return res.status(409).json({
+                error: 'Ya existe una compañía con ese código. Usá un código distinto o dejalo vacío.',
+                details: error.detail || error.message
+            });
+        }
         res.status(500).json({ error: 'Failed to create company', details: error.message });
     } finally {
         client.release();
@@ -2088,23 +2156,47 @@ app.put('/api/companies/:id', async (req, res) => {
         if (!(await assertCompanyInTenantScope(pool, ctx, id))) {
             return res.status(403).json({ error: 'Not allowed to update this company.' });
         }
-        const data = req.body;
-        
-        // Use raw SQL to bypass Prisma validation errors for new fields
-        const keys = Object.keys(data).filter(k => k !== 'id' && k !== 'organizationId');
+        const body = (req.body || {}) as Record<string, unknown>;
+
+        if (body.name !== undefined && !String(body.name ?? '').trim()) {
+            return res.status(400).json({ error: 'El nombre es obligatorio.', field: 'name' });
+        }
+
+        // Build the update from a whitelist of real columns only.
+        const data: Record<string, unknown> = {};
+        for (const col of COMPANY_WRITABLE_COLUMNS) {
+            if (body[col] === undefined) continue;
+            let value = body[col];
+            if (col === 'code' && typeof value === 'string' && value.trim() === '') {
+                value = null;
+            }
+            data[col] = value;
+        }
+
+        const keys = Object.keys(data);
+        if (keys.length === 0) {
+            return res.status(400).json({ error: 'No fields to update' });
+        }
         const setClause = keys.map((k, i) => `"${k}" = $${i + 1}`).join(', ');
         const values = keys.map(k => data[k]);
-        
+
         const query = `UPDATE "Company" SET ${setClause}, "updatedAt" = NOW() WHERE id = $${keys.length + 1} RETURNING *`;
         const result = await pool.query(query, [...values, id]);
-        
+
         if (result.rowCount === 0) {
             return res.status(404).json({ error: 'Company not found' });
         }
-        
+
         res.json(result.rows[0]);
     } catch (error: any) {
         console.error('Error updating company:', error);
+        if (error?.code === '23505') {
+            return res.status(409).json({
+                error: 'Ya existe una compañía con ese código. Usá un código distinto o dejalo vacío.',
+                field: 'code',
+                details: error.detail || error.message
+            });
+        }
         res.status(500).json({ error: 'Failed to update company', details: error.message });
     }
 });
