@@ -3,17 +3,31 @@ import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 
+const parseAllowedHosts = (raw: string | undefined): true | string[] => {
+  const list = String(raw ?? '')
+    .split(',')
+    .map((h) => h.trim().replace(/^https?:\/\//, '').replace(/\/.*$/, ''))
+    .filter(Boolean);
+  return list.length ? list : true;
+};
+
+const resolveAllowedHosts = (env: Record<string, string>): true | string[] => {
+  // loadEnv only reads .env files — merge process.env for Railway/runtime injection.
+  const fromEnv = process.env.VITE_ALLOWED_HOSTS ?? env.VITE_ALLOWED_HOSTS;
+  if (fromEnv?.trim()) return parseAllowedHosts(fromEnv);
+
+  const railwayDomain = process.env.RAILWAY_PUBLIC_DOMAIN?.trim();
+  if (process.env.RAILWAY_ENVIRONMENT || railwayDomain) {
+    return railwayDomain ? [railwayDomain, '.up.railway.app'] : true;
+  }
+
+  return true;
+};
+
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
   const apiTarget = env.VITE_API_PROXY_TARGET || 'http://localhost:14000';
-
-  // Hosts permitted by the dev/preview server. Vite 5+ blocks anything other than
-  // localhost by default (DNS-rebinding defense). On Railway/Vercel/etc. set
-  // VITE_ALLOWED_HOSTS to a comma list, or leave empty to allow all hosts.
-  const allowedHostsEnv = env.VITE_ALLOWED_HOSTS?.trim();
-  const allowedHosts = allowedHostsEnv
-    ? allowedHostsEnv.split(',').map((h) => h.trim()).filter(Boolean)
-    : true;
+  const allowedHosts = resolveAllowedHosts(env);
 
   return {
     base: env.VITE_BASE_URL || '/',
@@ -27,7 +41,7 @@ export default defineConfig(({ mode }) => {
       }
     },
     preview: {
-      port: Number(env.PORT || env.VITE_PORT || 13509),
+      port: Number(process.env.PORT || env.VITE_PORT || 13509),
       host: '0.0.0.0',
       allowedHosts
     },
