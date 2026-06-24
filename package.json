@@ -17,6 +17,8 @@
     "build": "pnpm --filter @sinapsis/web run build && pnpm --filter @sinapsis/api run build",
     "build:web": "pnpm --filter @sinapsis/web run build",
     "build:api": "pnpm --filter @sinapsis/api run build",
+    "start:api": "pnpm --filter @sinapsis/api run start",
+    "start:web": "pnpm --filter @sinapsis/web run start",
     "typecheck": "pnpm -r --if-present run typecheck",
     "prisma:generate": "pnpm --filter @sinapsis/api run prisma:generate",
     "prisma:migrate": "pnpm --filter @sinapsis/api run prisma:migrate",

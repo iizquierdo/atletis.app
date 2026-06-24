@@ -2,6 +2,7 @@
 // NOTE: env loading is performed by main.ts before importing this module.
 import express from 'express';
 import cors from 'cors';
+import { buildCorsOptions } from './cors';
 import { PrismaPg } from '@prisma/adapter-pg';
 import pg from 'pg';
 import fs from 'fs';
@@ -59,8 +60,12 @@ const adapter = new PrismaPg(pool);
 const prisma = new PrismaClient({ adapter });
 
 const app = express();
+app.use(cors(buildCorsOptions()));
 app.use(express.json());
-app.use(cors());
+
+app.get('/api/health', (_req, res) => {
+  res.json({ ok: true });
+});
 // Local files are served straight from disk. When the active storage provider
 // is S3, objects are not on disk, so static() falls through (next()) and the
 // handler below streams them from the bucket — keeping `/storage/<key>` URLs

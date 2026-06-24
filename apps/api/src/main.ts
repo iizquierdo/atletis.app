@@ -10,14 +10,26 @@ const repoRoot = path.resolve(apiRoot, '..', '..');
 dotenv.config({ path: path.join(repoRoot, '.env') });
 dotenv.config({ path: path.join(apiRoot, '.env'), override: true });
 
-const { default: app } = await import('./server');
+try {
+  const { default: app } = await import('./server');
 
-// Railway (y la mayoría de los PaaS) inyectan PORT — usarlo primero. En local
-// caemos a API_PORT (.env) o al default. Prioriza PORT para evitar mismatches
-// que devuelven 502 cuando el proxy no encuentra la app en el puerto esperado.
-const port = Number(process.env.PORT ?? process.env.API_PORT ?? 14000);
-const host = process.env.API_HOST ?? '0.0.0.0';
+  // Railway (y la mayoría de los PaaS) inyectan PORT — usarlo primero. En local
+  // caemos a API_PORT (.env) o al default. Prioriza PORT para evitar mismatches
+  // que devuelven 502 cuando el proxy no encuentra la app en el puerto esperado.
+  const port = Number(process.env.PORT ?? process.env.API_PORT ?? 14000);
+  const host = process.env.API_HOST ?? '0.0.0.0';
 
-app.listen(port, host, () => {
-  console.log(`[api] listening on http://${host}:${port}`);
-});
+  if (!process.env.DATABASE_URL?.trim()) {
+    console.error('[api] DATABASE_URL is not set — the API cannot connect to Postgres.');
+    process.exit(1);
+  }
+
+  app.listen(port, host, () => {
+    console.log(`[api] listening on http://${host}:${port}`);
+    const corsOrigin = process.env.WEB_ORIGIN?.trim() || '(any origin — set WEB_ORIGIN in prod)';
+    console.log(`[api] CORS allowed origins: ${corsOrigin}`);
+  });
+} catch (error) {
+  console.error('[api] failed to start:', error);
+  process.exit(1);
+}
