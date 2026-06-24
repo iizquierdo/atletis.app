@@ -54,3 +54,9 @@ export const installFetchRewrite = (): void => {
   }
   window.XMLHttpRequest = PatchedXHR as unknown as typeof XMLHttpRequest;
 };
+
+// Patch fetch as soon as this module loads — static imports in index.tsx are hoisted,
+// so i18n.ts can fire fetch() before index.tsx body runs installFetchRewrite().
+if (typeof window !== 'undefined' && API_BASE) {
+  installFetchRewrite();
+}

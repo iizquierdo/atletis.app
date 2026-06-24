@@ -601,6 +601,8 @@ const ensureUserColumns = async () => {
     await pool.query('ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "sessionToken" TEXT');
     await pool.query('ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "passwordResetToken" TEXT');
     await pool.query('ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "passwordResetExpiresAt" TIMESTAMPTZ');
+    await pool.query('ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "imageUrl" TEXT');
+    await pool.query('ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "coverUrl" TEXT');
 };
 
 const createSessionToken = () => crypto.randomBytes(48).toString('hex');

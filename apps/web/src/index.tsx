@@ -1,4 +1,6 @@
 import './styles/globals.css';
+// Must load before ./i18n (which fetches /api on module init).
+import '@/lib/api-base';
 
 import React from 'react';
 import ReactDOM from 'react-dom/client';
@@ -6,11 +8,8 @@ import { ThemeProvider } from 'next-themes';
 import { HelmetProvider } from 'react-helmet-async';
 import { LoadingBarContainer } from 'react-top-loading-bar';
 import { Toaster } from '@/components/ui/sonner';
-import { installFetchRewrite } from '@/lib/api-base';
 import App from './App';
 import './i18n';
-
-installFetchRewrite();
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {

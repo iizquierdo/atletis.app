@@ -21,6 +21,7 @@ async function main() {
     if (process.env.ALLOW_DESTRUCTIVE_SEED !== 'true') {
         console.log('[seed] aborted: this script wipes the DB before re-creating it.');
         console.log('[seed] To run it intentionally set ALLOW_DESTRUCTIVE_SEED=true.');
+        console.log('[seed] For production / existing data use: pnpm bootstrap:admin');
         return;
     }
 

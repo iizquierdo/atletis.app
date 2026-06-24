@@ -1,4 +1,5 @@
 import { useEffect, type ReactNode } from "react";
+import { HeroScene, SpotPanel, SpotFamily, SpotCoach, SpotBlocks } from "./illustrations";
 
 /* Material Symbols Rounded helper (font is loaded in index.html). */
 function Icon({ name, className, filled }: { name: string; className?: string; filled?: boolean }) {
@@ -8,6 +9,17 @@ function Icon({ name, className, filled }: { name: string; className?: string; f
       aria-hidden="true"
     >
       {name}
+    </span>
+  );
+}
+
+type Tone = "teal" | "coral" | "green" | "sand" | "lilac";
+
+/* Flat icon chip — Material Symbol on a soft pastel rounded square. */
+function FlatIcon({ name, tone = "teal", className }: { name: string; tone?: Tone; className?: string }) {
+  return (
+    <span className={`flat-icon tone-${tone}${className ? ` ${className}` : ""}`}>
+      <Icon name={name} filled />
     </span>
   );
 }
@@ -50,15 +62,15 @@ function Nav() {
       <div className="shell nav-inner">
         <a className="brand" href="#top">
           <span className="brand-logo">
-            <Icon name="hub" filled />
+            <Icon name="exercise" filled />
           </span>
-          <span className="brand-name">Sinapsis</span>
+          <span className="brand-name">Atletis</span>
         </a>
         <nav className="nav-links">
           <a href="#apps">Plataforma</a>
-          <a href="#modulos">Módulos</a>
-          <a href="#roles">Roles</a>
-          <a href="#extensible">Extensible</a>
+          <a href="#modulos">Funciones</a>
+          <a href="#roles">Para cada quien</a>
+          <a href="#crece">Crece con vos</a>
         </nav>
         <div className="nav-cta">
           <a className="btn btn-ghost" href="#apps">
@@ -82,12 +94,12 @@ function Hero() {
             <span className="dot" /> Una plataforma · tres experiencias conectadas
           </span>
           <h1>
-            Gestioná tu club como un equipo de <em>alto rendimiento</em>.
+            El deporte de tus hijos, <em>todo en un solo lugar</em>.
           </h1>
           <p className="hero-lead">
-            Sinapsis reúne la gestión de tu sede, la app de las familias y la app de los profesores en
-            un mismo ecosistema. Disciplinas, alumnos, niveles, informes y comunidades — todo
-            sincronizado, en tiempo real.
+            Atletis conecta a tu club, a las familias y a los profesores en un mismo ecosistema.
+            Seguí el progreso, los niveles, los informes y la comunidad — al instante y desde el
+            celular.
           </p>
           <div className="hero-actions">
             <a className="btn btn-primary" href="#cta">
@@ -104,65 +116,31 @@ function Hero() {
             </div>
             <div className="hero-stat">
               <strong>4</strong>
-              <span>Roles con permisos finos</span>
+              <span>Roles, cada quien lo suyo</span>
             </div>
             <div className="hero-stat">
-              <strong>∞</strong>
-              <span>Módulos plug-and-play</span>
+              <strong>+10</strong>
+              <span>Disciplinas deportivas</span>
             </div>
           </div>
         </div>
 
-        <div className="hero-visual reveal in" aria-hidden="true">
-          <span className="glow" />
-          {/* Back phone — professor view */}
-          <div className="phone back">
-            <div className="phone-screen">
-              <div className="mini-row">
-                <span className="mini-avatar">P</span>
-                <div>
-                  <span className="mini-kicker">Profesor</span>
-                  <h5>Mis clases</h5>
-                </div>
-              </div>
-              <div className="mini-card">
-                <small>Hoy · 18:00</small>
-                <strong>Natación · Nivel 3</strong>
-                <div className="mini-chips">
-                  <span className="mini-chip">12 alumnos</span>
-                  <span className="mini-chip green">Pileta A</span>
-                </div>
-              </div>
-              <div className="mini-card">
-                <small>Cuaderno</small>
-                <strong>3 informes</strong>
+        <div className="hero-visual reveal in">
+          <div className="hero-art">
+            <HeroScene className="hero-illustration" />
+            {/* friendly floating product hints */}
+            <div className="float-card level" aria-hidden="true">
+              <span className="float-kicker">Nivel actual</span>
+              <strong>Delfín · Nivel 3</strong>
+              <div className="float-bar">
+                <span style={{ width: "72%" }} />
               </div>
             </div>
-          </div>
-          {/* Front phone — parent view */}
-          <div className="phone front">
-            <div className="phone-screen">
-              <div className="mini-row">
-                <span className="mini-avatar">M</span>
-                <div>
-                  <span className="mini-kicker">Familia</span>
-                  <h5>Mateo, 9</h5>
-                </div>
-              </div>
-              <div className="mini-card brand">
-                <small>Nivel actual</small>
-                <strong>Delfín · Nivel 3</strong>
-                <div className="mini-bar">
-                  <span style={{ width: "72%" }} />
-                </div>
-              </div>
-              <div className="mini-card accent">
-                <small>Objetivo de la semana</small>
-                <strong>Respiración bilateral</strong>
-              </div>
-              <div className="mini-chips">
-                <span className="mini-chip">Informe nuevo</span>
-                <span className="mini-chip green">Mensaje del profe</span>
+            <div className="float-chip" aria-hidden="true">
+              <FlatIcon name="emoji_events" tone="sand" />
+              <div>
+                <small>¡Nuevo logro!</small>
+                <p>Respiración bilateral</p>
               </div>
             </div>
           </div>
@@ -173,21 +151,21 @@ function Hero() {
 }
 
 function Trust() {
-  const items: [string, string][] = [
-    ["pool", "Natación"],
-    ["sports_gymnastics", "Gimnasia"],
-    ["sports_soccer", "Fútbol"],
-    ["sports_tennis", "Tenis"],
-    ["sports_martial_arts", "Artes marciales"]
+  const items: [string, Tone, string][] = [
+    ["pool", "teal", "Natación"],
+    ["sports_gymnastics", "coral", "Gimnasia"],
+    ["sports_soccer", "green", "Fútbol"],
+    ["sports_tennis", "sand", "Tenis"],
+    ["sports_martial_arts", "lilac", "Artes marciales"]
   ];
   return (
     <div className="trust">
       <div className="shell trust-inner">
         <span className="trust-label">Pensado para cualquier disciplina deportiva</span>
         <div className="trust-items">
-          {items.map(([icon, label]) => (
+          {items.map(([icon, tone, label]) => (
             <span className="trust-item" key={label}>
-              <Icon name={icon} /> {label}
+              <FlatIcon name={icon} tone={tone} /> {label}
             </span>
           ))}
         </div>
@@ -198,8 +176,8 @@ function Trust() {
 
 type Surface = {
   badge: string;
-  tone: "teal" | "orange" | "green";
-  icon: string;
+  tone: Tone;
+  Art: (props: { className?: string }) => ReactNode;
   title: string;
   role: string;
   blurb: string;
@@ -211,24 +189,24 @@ const SURFACES: Surface[] = [
   {
     badge: "Panel web",
     tone: "teal",
-    icon: "dashboard",
-    title: "Sinapsis Web",
+    Art: SpotPanel,
+    title: "Atletis Web",
     role: "Administración de sede",
     blurb:
-      "El centro de mando del club. Multi-sede nativo: cada sede es su propia compañía, con su catálogo, su staff y sus familias.",
+      "El centro de mando del club. Multi-sede nativo: cada sede tiene su catálogo, su staff y sus familias.",
     bullets: [
-      "Disciplinas, niveles ordenables y biblioteca de recursos",
+      "Disciplinas, niveles y biblioteca de recursos",
       "Fichas de alumnos, inscripciones y asignaciones",
       "Informes, comunidades y publicaciones",
-      "ABM de usuarios, roles y permisos (RBAC)"
+      "Usuarios, roles y permisos a medida"
     ],
     foot: "Para directores y administradores"
   },
   {
-    badge: "PWA",
-    tone: "orange",
-    icon: "family_restroom",
-    title: "App de Familias",
+    badge: "App",
+    tone: "coral",
+    Art: SpotFamily,
+    title: "Atletis Familias",
     role: "Padres y tutores",
     blurb:
       "Las familias siguen el progreso de cada hijo en tiempo real, desde el celular y sin instalar nada de una tienda.",
@@ -238,13 +216,13 @@ const SURFACES: Surface[] = [
       "Mensajería directa con el cuerpo técnico",
       "Recursos, multimedia y comunidad de la sede"
     ],
-    foot: "Instalable como app · 100% móvil"
+    foot: "Se instala como app · 100% móvil"
   },
   {
-    badge: "PWA",
+    badge: "App",
     tone: "green",
-    icon: "sports",
-    title: "App de Profesores",
+    Art: SpotCoach,
+    title: "Atletis Profesores",
     role: "Cuerpo técnico",
     blurb:
       "Los profesores gestionan sus clases y registran el avance de cada alumno desde el borde de la pileta o la cancha.",
@@ -273,10 +251,10 @@ function Surfaces() {
       </div>
       <div className="surfaces">
         {SURFACES.map((s) => (
-          <article className="surface-card reveal" key={s.title}>
-            <span className="badge">{s.badge}</span>
-            <div className={`surface-icon ${s.tone}`}>
-              <Icon name={s.icon} filled />
+          <article className={`surface-card tone-${s.tone} reveal`} key={s.title}>
+            <div className="surface-art">
+              <s.Art className="surface-illustration" />
+              <span className="badge">{s.badge}</span>
             </div>
             <h3>{s.title}</h3>
             <span className="surface-role">{s.role}</span>
@@ -298,36 +276,42 @@ function Surfaces() {
   );
 }
 
-const FEATURES = [
+const FEATURES: { icon: string; tone: Tone; title: string; text: string }[] = [
   {
     icon: "exercise",
+    tone: "teal",
     title: "Disciplinas y niveles",
-    text: "Catálogo de disciplinas a nivel organización, con niveles ordenables y una biblioteca de recursos con visibilidad configurable."
+    text: "Catálogo de disciplinas con niveles ordenables y una biblioteca de recursos con visibilidad configurable."
   },
   {
     icon: "groups",
+    tone: "coral",
     title: "Alumnos",
-    text: "Ficha completa: inscripción a disciplinas y niveles, asignación de profesores y tutores, informes y mensajería por alumno."
+    text: "Ficha completa: inscripción a disciplinas y niveles, asignación de profesores y tutores, informes y mensajería."
   },
   {
     icon: "forum",
+    tone: "green",
     title: "Comunidades",
-    text: "Comunidades por sede con miembros y publicaciones, para mantener a las familias conectadas con la vida del club."
+    text: "Comunidades por sede con miembros y publicaciones, para mantener a las familias conectadas con el club."
   },
   {
     icon: "monitoring",
+    tone: "sand",
     title: "Informes y seguimiento",
-    text: "Los profesores registran avances y publican informes; las familias los reciben con estado PUBLICADO o solo-tutores."
+    text: "Los profesores registran avances y publican informes; las familias los reciben al instante en su app."
   },
   {
     icon: "apartment",
+    tone: "lilac",
     title: "Multi-sede nativo",
-    text: "Cada sede se modela como una compañía. Un Admin de Sede ve lo suyo; el multi-sede se resuelve con accesos adicionales."
+    text: "Cada sede es independiente, con su propio equipo y familias. El multi-sede se resuelve sin fricción."
   },
   {
     icon: "chat",
+    tone: "teal",
     title: "Mensajería contextual",
-    text: "Conversaciones ancladas a cada alumno, para que el diálogo entre familia y cuerpo técnico no se pierda en el chat general."
+    text: "Conversaciones ancladas a cada alumno, para que el diálogo entre familia y profesor no se pierda."
   }
 ];
 
@@ -336,20 +320,18 @@ function Features() {
     <Section id="modulos">
       <div className="section-head reveal">
         <span className="eyebrow">
-          <Icon name="widgets" /> Qué resuelve
+          <Icon name="auto_awesome" /> Qué resuelve
         </span>
-        <h2>Toda la gestión deportiva, en módulos</h2>
+        <h2>Todo lo que tu club necesita, sin complicaciones</h2>
         <p>
-          Sinapsis nace de un framework de módulos. Activás solo lo que tu sede necesita y cada
-          módulo trae su UI, su API y sus permisos listos para usar.
+          Atletis reúne la gestión deportiva en funciones simples y claras. Activás solo lo que tu
+          sede necesita y cada pieza llega lista para usar.
         </p>
       </div>
       <div className="feature-grid">
         {FEATURES.map((f) => (
           <article className="feature-card reveal" key={f.title}>
-            <div className="fi">
-              <Icon name={f.icon} filled />
-            </div>
+            <FlatIcon name={f.icon} tone={f.tone} className="feature-chip" />
             <h4>{f.title}</h4>
             <p>{f.text}</p>
           </article>
@@ -359,27 +341,11 @@ function Features() {
   );
 }
 
-const ROLES = [
-  {
-    icon: "shield_person",
-    title: "Super Admin",
-    text: "Acceso total a toda la organización y todas las sedes."
-  },
-  {
-    icon: "admin_panel_settings",
-    title: "Admin Sede",
-    text: "Gestiona su(s) compañía(s): staff, alumnos, catálogo y comunidad."
-  },
-  {
-    icon: "sports",
-    title: "Profesor",
-    text: "Solo los alumnos donde está asignado; crea informes y conversaciones."
-  },
-  {
-    icon: "family_restroom",
-    title: "Tutor",
-    text: "Solo sus alumnos vinculados; ve informes publicados y participa del chat."
-  }
+const ROLES: { icon: string; tone: Tone; title: string; text: string }[] = [
+  { icon: "shield_person", tone: "teal", title: "Super Admin", text: "Acceso total a toda la organización y todas las sedes." },
+  { icon: "admin_panel_settings", tone: "coral", title: "Admin Sede", text: "Gestiona su(s) sede(s): staff, alumnos, catálogo y comunidad." },
+  { icon: "sports", tone: "green", title: "Profesor", text: "Solo los alumnos donde está asignado; crea informes y conversaciones." },
+  { icon: "family_restroom", tone: "sand", title: "Tutor", text: "Solo sus alumnos vinculados; ve informes y participa del chat." }
 ];
 
 function Roles() {
@@ -388,19 +354,18 @@ function Roles() {
       <div className="roles reveal">
         <div className="roles-head">
           <span className="eyebrow">
-            <Icon name="lock" /> Permisos finos
+            <Icon name="verified_user" /> Para cada quien
           </span>
-          <h2>Cada quien ve exactamente lo que le corresponde</h2>
+          <h2>Cada persona ve exactamente lo que le corresponde</h2>
           <p>
-            El control de acceso por roles (RBAC) está integrado en el framework. El acceso grueso lo
-            resuelve el middleware; el scoping fino vive en cada módulo, resuelto desde la identidad
-            del usuario.
+            Atletis cuida la privacidad de cada familia. Los permisos son finos: cada rol accede solo
+            a la información que necesita, sin exponer la del resto.
           </p>
         </div>
         <div className="roles-grid">
           {ROLES.map((r) => (
             <div className="role-card" key={r.title}>
-              <Icon name={r.icon} filled />
+              <FlatIcon name={r.icon} tone={r.tone} />
               <h4>{r.title}</h4>
               <p>{r.text}</p>
             </div>
@@ -411,73 +376,55 @@ function Roles() {
   );
 }
 
-function Modules() {
+function Grow() {
+  const points: { icon: string; tone: Tone; title: string; text: string }[] = [
+    {
+      icon: "extension",
+      tone: "teal",
+      title: "Activás solo lo que usás",
+      text: "Disciplinas, alumnos, comunidades… sumás las piezas que tu sede necesita, cuando las necesita."
+    },
+    {
+      icon: "rocket_launch",
+      tone: "coral",
+      title: "Listo para usar",
+      text: "Cada función llega con su pantalla, sus permisos y su lugar en el menú. Sin configuraciones eternas."
+    },
+    {
+      icon: "favorite",
+      tone: "green",
+      title: "Pensado para familias",
+      text: "Una experiencia simple y cálida para que padres y chicos disfruten cada logro del camino."
+    }
+  ];
   return (
-    <Section id="extensible">
-      <div className="section-head reveal">
-        <span className="eyebrow">
-          <Icon name="extension" /> Arquitectura
-        </span>
-        <h2>Extensible por diseño, plug-and-play</h2>
-        <p>
-          Cada módulo es una pieza autocontenida: manifest, migraciones, hooks de instalación y su
-          mitad de cliente y servidor. Se instala, se actualiza y se desinstala sin tocar el núcleo.
-        </p>
-      </div>
-      <div className="modules-grid">
-        <div className="code-card reveal">
-          <div className="code-top">
-            <span className="dot r" />
-            <span className="dot y" />
-            <span className="dot g" />
-            <span>terminal</span>
-          </div>
-          <pre className="code-body">
-            <code>
-              <span className="c"># Instalar un módulo en tu sede</span>
-              {"\n"}
-              <span className="k">pnpm</span> module:install <span className="s">disciplines</span>
-              {"\n"}
-              <span className="k">pnpm</span> module:install <span className="s">students</span>
-              {"\n"}
-              <span className="k">pnpm</span> module:install <span className="s">communities</span>
-              {"\n\n"}
-              <span className="c"># Corre migraciones + siembra roles,</span>
-              {"\n"}
-              <span className="c"># permisos y el menú del sidebar.</span>
-              {"\n"}
-              <span className="k">✓</span> 3 módulos activos
-            </code>
-          </pre>
+    <Section id="crece">
+      <div className="grow-grid">
+        <div className="grow-art reveal">
+          <SpotBlocks className="grow-illustration" />
         </div>
-        <div className="module-points">
-          {[
-            {
-              icon: "deployed_code",
-              title: "Autocontenido",
-              text: "client/ + server/ + migrations/ + module.json. Cada módulo trae todo lo que necesita."
-            },
-            {
-              icon: "database",
-              title: "Migraciones seguras",
-              text: "Instalar aplica solo las migraciones pendientes; desinstalar conserva los datos salvo que pidas purgarlos."
-            },
-            {
-              icon: "menu_open",
-              title: "Se integra solo",
-              text: "Al instalar, el módulo siembra sus roles, permisos y su grupo de menú: aparece en el panel automáticamente."
-            }
-          ].map((p) => (
-            <div className="module-point reveal" key={p.title}>
-              <div className="mp-icon">
-                <Icon name={p.icon} filled />
+        <div>
+          <div className="section-head reveal">
+            <span className="eyebrow">
+              <Icon name="trending_up" /> Crece con vos
+            </span>
+            <h2>Una plataforma que acompaña a tu club</h2>
+            <p>
+              Atletis se arma como bloques: empezás simple y vas sumando funciones a medida que tu
+              sede crece, siempre con la misma experiencia clara.
+            </p>
+          </div>
+          <div className="grow-points">
+            {points.map((p) => (
+              <div className="grow-point reveal" key={p.title}>
+                <FlatIcon name={p.icon} tone={p.tone} />
+                <div>
+                  <h4>{p.title}</h4>
+                  <p>{p.text}</p>
+                </div>
               </div>
-              <div>
-                <h4>{p.title}</h4>
-                <p>{p.text}</p>
-              </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       </div>
     </Section>
@@ -488,18 +435,25 @@ function CTA() {
   return (
     <Section id="cta">
       <div className="cta-band reveal">
-        <h2>Llevá tu club al siguiente nivel</h2>
-        <p>
-          Una plataforma para administrar tu sede, una app para cada familia y una app para cada
-          profesor. Pedí una demo y la armamos con los datos de tu club.
-        </p>
-        <div className="cta-actions">
-          <a className="btn btn-light" href="mailto:hola@sinapsis.app?subject=Quiero%20una%20demo%20de%20Sinapsis">
-            <Icon name="mail" /> Solicitar demo
-          </a>
-          <a className="btn btn-light" href="#apps">
-            <Icon name="explore" /> Recorrer el ecosistema
-          </a>
+        <span className="cta-blob blob-1" aria-hidden="true" />
+        <span className="cta-blob blob-2" aria-hidden="true" />
+        <div className="cta-inner">
+          <h2>Llevá tu club al siguiente nivel</h2>
+          <p>
+            Un panel para administrar tu sede, una app para cada familia y una app para cada
+            profesor. Pedí una demo y la armamos con los datos de tu club.
+          </p>
+          <div className="cta-actions">
+            <a
+              className="btn btn-light"
+              href="mailto:hola@atletis.app?subject=Quiero%20una%20demo%20de%20Atletis"
+            >
+              <Icon name="mail" /> Solicitar demo
+            </a>
+            <a className="btn btn-light" href="#apps">
+              <Icon name="explore" /> Recorrer el ecosistema
+            </a>
+          </div>
         </div>
       </div>
     </Section>
@@ -514,9 +468,9 @@ function Footer() {
           <div className="footer-about">
             <a className="brand" href="#top">
               <span className="brand-logo">
-                <Icon name="hub" filled />
+                <Icon name="exercise" filled />
               </span>
-              <span className="brand-name">Sinapsis</span>
+              <span className="brand-name">Atletis</span>
             </a>
             <p>
               La plataforma de gestión deportiva que conecta a la sede, las familias y el cuerpo
@@ -531,19 +485,19 @@ function Footer() {
           </div>
           <div className="footer-col">
             <h5>Producto</h5>
-            <a href="#modulos">Módulos</a>
+            <a href="#modulos">Funciones</a>
             <a href="#roles">Roles y permisos</a>
-            <a href="#extensible">Arquitectura</a>
+            <a href="#crece">Crece con vos</a>
           </div>
           <div className="footer-col">
             <h5>Empezar</h5>
             <a href="#cta">Solicitar demo</a>
-            <a href="mailto:hola@sinapsis.app">Contacto</a>
+            <a href="mailto:hola@atletis.app">Contacto</a>
           </div>
         </div>
         <div className="footer-bottom">
-          <span>© {new Date().getFullYear()} Sinapsis · Plataforma de gestión deportiva</span>
-          <span>Hecho con foco en clubes, academias y escuelas deportivas.</span>
+          <span>© {new Date().getFullYear()} Atletis · Plataforma de gestión deportiva</span>
+          <span>Hecho con cariño para clubes, academias y escuelas deportivas.</span>
         </div>
       </div>
     </footer>
@@ -561,7 +515,7 @@ export default function App() {
         <Surfaces />
         <Features />
         <Roles />
-        <Modules />
+        <Grow />
         <CTA />
       </main>
       <Footer />

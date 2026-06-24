@@ -1,5 +1,6 @@
 import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
+import { apiUrl } from '@/lib/api-base';
 import { getClientModules } from './module-registry';
 
 const SUPPORTED_LANGS = ['en', 'es'];
@@ -1114,7 +1115,7 @@ const loadTranslationOverrides = async (locale: string) => {
     const normalized = String(locale || '').trim().toLowerCase();
     if (!SUPPORTED_LANGS.includes(normalized)) return;
     try {
-        const res = await fetch(`/api/translations/overrides?locale=${encodeURIComponent(normalized)}`);
+        const res = await fetch(apiUrl(`/api/translations/overrides?locale=${encodeURIComponent(normalized)}`));
         if (!res.ok) return;
         const overrides = await res.json();
         if (!isObject(overrides)) return;

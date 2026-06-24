@@ -24,6 +24,7 @@
     "prisma:migrate": "pnpm --filter @sinapsis/api run prisma:migrate",
     "prisma:deploy": "pnpm --filter @sinapsis/api run prisma:deploy",
     "prisma:seed": "pnpm --filter @sinapsis/api run prisma:seed",
+    "bootstrap:admin": "pnpm --filter @sinapsis/api run bootstrap:admin",
     "module:list": "pnpm --filter @sinapsis/api run module:list",
     "module:install": "pnpm --filter @sinapsis/api run module:install --",
     "module:uninstall": "pnpm --filter @sinapsis/api run module:uninstall --",
