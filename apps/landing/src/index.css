@@ -9,6 +9,25 @@
    ─────────────────────────────────────────────────────────────────────────── */
 :root {
   --font-display: "Plus Jakarta Sans", sans-serif;
+  --primary: #fb4e84;
+}
+
+/* Splash animation (mirrors the parent PWA splash): sports icons rising. */
+@keyframes splash-rise {
+  0% {
+    transform: translateY(0) rotate(-8deg) scale(0.85);
+    opacity: 0;
+  }
+  8% {
+    opacity: 1;
+  }
+  88% {
+    opacity: 0.6;
+  }
+  100% {
+    transform: translateY(-105vh) rotate(8deg) scale(1.05);
+    opacity: 0;
+  }
 }
 
 /* Keep our base overrides inside Tailwind's `base` layer so utility classes
@@ -84,6 +103,9 @@
     opacity: 1;
     transform: none;
     transition: none;
+  }
+  .splash-particle {
+    display: none;
   }
   html {
     scroll-behavior: auto;

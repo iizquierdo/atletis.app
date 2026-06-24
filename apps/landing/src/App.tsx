@@ -61,9 +61,66 @@ function Eyebrow({ icon, children, className }: { icon: string; children: ReactN
 }
 
 const BTN_PRIMARY =
-  "inline-flex items-center justify-center gap-2 rounded-full bg-slate-900 text-white px-6 py-3 text-base font-semibold shadow-lg shadow-slate-900/10 transition hover:-translate-y-0.5 hover:shadow-xl";
+  "inline-flex items-center justify-center gap-2 rounded-full bg-[#fb4e84] text-white px-6 py-3 text-base font-semibold shadow-[0_10px_24px_-6px_rgba(251,78,132,0.5)] transition hover:-translate-y-0.5 hover:bg-[#f23a73] hover:shadow-[0_14px_28px_-6px_rgba(251,78,132,0.6)]";
 const BTN_GHOST =
   "inline-flex items-center justify-center gap-2 rounded-full bg-white text-slate-700 px-6 py-3 text-base font-semibold border border-slate-200 shadow-sm transition hover:-translate-y-0.5";
+
+/* Splash background — the same rising sports-icon animation as the parent PWA
+   splash screen: colored sports icons drifting up over a transparent backdrop.
+   Sits behind the hero cards. */
+const SPLASH_PARTICLES = [
+  { icon: "pool", x: 7, size: 60, color: "#0a858c", opacity: 0.22, dur: 13, delay: 0 },
+  { icon: "sports_soccer", x: 19, size: 40, color: "#16a34a", opacity: 0.18, dur: 10, delay: -4 },
+  { icon: "sports_basketball", x: 33, size: 68, color: "#f59e0b", opacity: 0.2, dur: 15, delay: -8 },
+  { icon: "sports_tennis", x: 48, size: 36, color: "#22c55e", opacity: 0.26, dur: 11, delay: -1.5 },
+  { icon: "sports_volleyball", x: 62, size: 52, color: "#3b82f6", opacity: 0.18, dur: 14, delay: -6 },
+  { icon: "fitness_center", x: 77, size: 44, color: "#8b5cf6", opacity: 0.2, dur: 10, delay: -10 },
+  { icon: "directions_run", x: 88, size: 56, color: "#f97316", opacity: 0.16, dur: 16, delay: -2.5 },
+  { icon: "surfing", x: 13, size: 48, color: "#06b6d4", opacity: 0.18, dur: 12, delay: -7 },
+  { icon: "kayaking", x: 41, size: 40, color: "#0d9488", opacity: 0.2, dur: 9, delay: -3 },
+  { icon: "skateboarding", x: 56, size: 64, color: "#f43f5e", opacity: 0.16, dur: 13, delay: -11 },
+  { icon: "sports_gymnastics", x: 70, size: 44, color: "#a855f7", opacity: 0.24, dur: 11, delay: -5 },
+  { icon: "sports_handball", x: 24, size: 36, color: "#2563eb", opacity: 0.18, dur: 14, delay: -9 },
+  { icon: "snowboarding", x: 82, size: 52, color: "#0ea5e9", opacity: 0.16, dur: 12, delay: -0.5 },
+  { icon: "sports_martial_arts", x: 95, size: 40, color: "#ef4444", opacity: 0.2, dur: 10, delay: -13 },
+  { icon: "pool", x: 3, size: 44, color: "#0ea5e9", opacity: 0.18, dur: 11, delay: -6 },
+  { icon: "sports_basketball", x: 16, size: 52, color: "#f97316", opacity: 0.16, dur: 14, delay: -2 },
+  { icon: "fitness_center", x: 28, size: 40, color: "#8b5cf6", opacity: 0.22, dur: 9, delay: -12 },
+  { icon: "directions_run", x: 37, size: 60, color: "#ef4444", opacity: 0.16, dur: 16, delay: -7 },
+  { icon: "sports_tennis", x: 52, size: 44, color: "#16a34a", opacity: 0.2, dur: 10, delay: -9.5 },
+  { icon: "kayaking", x: 60, size: 36, color: "#2563eb", opacity: 0.24, dur: 13, delay: -3.5 },
+  { icon: "sports_soccer", x: 67, size: 56, color: "#0d9488", opacity: 0.17, dur: 15, delay: -0.8 },
+  { icon: "sports_gymnastics", x: 74, size: 40, color: "#f43f5e", opacity: 0.22, dur: 11, delay: -8.5 },
+  { icon: "surfing", x: 85, size: 64, color: "#06b6d4", opacity: 0.15, dur: 14, delay: -5.5 },
+  { icon: "skateboarding", x: 91, size: 44, color: "#a855f7", opacity: 0.2, dur: 12, delay: -11.5 },
+  { icon: "sports_volleyball", x: 45, size: 38, color: "#f59e0b", opacity: 0.22, dur: 10, delay: -4.5 },
+  { icon: "snowboarding", x: 9, size: 56, color: "#3b82f6", opacity: 0.16, dur: 15, delay: -10.5 },
+  { icon: "sports_handball", x: 30, size: 48, color: "#06b6d4", opacity: 0.18, dur: 12, delay: -6.5 },
+  { icon: "sports_martial_arts", x: 64, size: 44, color: "#a855f7", opacity: 0.2, dur: 13, delay: -1.2 }
+];
+
+function SplashBackground() {
+  return (
+    <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden">
+      {SPLASH_PARTICLES.map((p, i) => (
+        <span
+          key={i}
+          className="splash-particle material-symbols-rounded icon-filled absolute select-none"
+          style={{
+            left: `${p.x}%`,
+            bottom: "-10%",
+            fontSize: `${p.size}px`,
+            color: p.color,
+            opacity: p.opacity,
+            animation: `splash-rise ${p.dur}s linear ${p.delay}s infinite`
+          }}
+        >
+          {p.icon}
+        </span>
+      ))}
+    </div>
+  );
+}
 
 /* Subtle aurora gradient blobs for select section backgrounds. */
 function Aurora() {
@@ -106,7 +163,7 @@ function Nav() {
     <header className="sticky top-0 z-50 bg-slate-50/80 backdrop-blur-md border-b border-slate-200/60">
       <Container className="flex h-16 items-center justify-between gap-4">
         <a href="#top" className="flex items-center gap-2.5">
-          <span className="grid place-items-center w-10 h-10 rounded-2xl bg-gradient-to-br from-teal-500 to-teal-700 text-white shadow-lg shadow-teal-700/20">
+          <span className="grid place-items-center w-10 h-10 rounded-2xl bg-gradient-to-br from-[#ff7aa6] to-[#fb4e84] text-white shadow-lg shadow-[#fb4e84]/30">
             <Icon name="exercise" filled className="text-[1.35rem]" />
           </span>
           <span className="font-display text-xl font-extrabold text-slate-900">Atletis</span>
@@ -135,18 +192,18 @@ const HERO_STATS: { num: string; label: string; tone: Tone }[] = [
 
 function Hero() {
   return (
-    <section id="top" className="relative">
-      <Aurora />
-      <Container className="relative py-10 sm:py-14">
+    <section id="top" className="relative overflow-hidden">
+      <SplashBackground />
+      <Container className="relative z-10 py-12 sm:py-16">
         <div className="grid lg:grid-cols-2 gap-4">
           {/* Headline card */}
           <div className={`${CARD} reveal in p-7 sm:p-10 flex flex-col justify-center`}>
             <span className="inline-flex items-center gap-2 self-start rounded-full bg-slate-50 border border-slate-200 px-3.5 py-1.5 text-[0.78rem] font-semibold text-slate-600">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_0_4px_rgb(16,185,129,0.18)]" />
+              <span className="w-1.5 h-1.5 rounded-full bg-[#fb4e84] shadow-[0_0_0_4px_rgba(251,78,132,0.18)]" />
               Una plataforma · tres experiencias
             </span>
             <h1 className="mt-6 text-4xl sm:text-5xl font-extrabold text-slate-900 leading-[1.04] tracking-tight">
-              El deporte de tus hijos, <span className="text-teal-600">todo en un lugar</span>.
+              El deporte de tus hijos, <span className="text-[#fb4e84]">todo en un lugar</span>.
             </h1>
             <p className="mt-5 max-w-lg text-lg text-slate-500 leading-relaxed">
               Atletis conecta a tu club, a las familias y a los profesores en un mismo ecosistema.
@@ -170,7 +227,7 @@ function Hero() {
             <HeroScene className="relative w-full max-w-md h-auto" />
             {/* floating product hints */}
             <div className="absolute left-3 top-5 rounded-2xl bg-white shadow-lg shadow-slate-900/5 px-4 py-3 w-44">
-              <span className="text-[0.62rem] font-bold uppercase tracking-widest text-teal-600">Nivel actual</span>
+              <span className="text-[0.62rem] font-bold uppercase tracking-widest text-[#fb4e84]">Nivel actual</span>
               <strong className="block mt-0.5 font-display text-base text-slate-900">Delfín · Nivel 3</strong>
               <div className="mt-2 h-1.5 rounded-full bg-blue-100 overflow-hidden">
                 <span className="block h-full rounded-full bg-gradient-to-r from-amber-400 to-orange-500" style={{ width: "72%" }} />
@@ -490,7 +547,7 @@ function Footer() {
         <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-[1.6fr_1fr_1fr_1fr]">
           <div className="max-w-xs">
             <a href="#top" className="flex items-center gap-2.5">
-              <span className="grid place-items-center w-10 h-10 rounded-2xl bg-gradient-to-br from-teal-500 to-teal-700 text-white">
+              <span className="grid place-items-center w-10 h-10 rounded-2xl bg-gradient-to-br from-[#ff7aa6] to-[#fb4e84] text-white">
                 <Icon name="exercise" filled className="text-[1.35rem]" />
               </span>
               <span className="font-display text-xl font-extrabold text-slate-900">Atletis</span>
