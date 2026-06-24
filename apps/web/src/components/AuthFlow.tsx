@@ -41,6 +41,7 @@ const AuthFlow: React.FC<AuthFlowProps> = ({
 
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
+  const [organizationName, setOrganizationName] = useState('');
   const [signUpEmail, setSignUpEmail] = useState('');
   const [signUpPassword, setSignUpPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -104,7 +105,7 @@ const AuthFlow: React.FC<AuthFlowProps> = ({
       const res = await fetch('/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ firstName, lastName, email: signUpEmail, password: signUpPassword })
+        body: JSON.stringify({ firstName, lastName, organizationName, email: signUpEmail, password: signUpPassword })
       });
       const data = await res.json();
       if (!res.ok) {
@@ -297,6 +298,16 @@ const AuthFlow: React.FC<AuthFlowProps> = ({
             <Label htmlFor="su-ln">{t('auth.lastName')}</Label>
             <Input id="su-ln" value={lastName} onChange={(e) => setLastName(e.target.value)} placeholder="Last name" variant="md" />
           </div>
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="su-org">{t('auth.organizationName')}</Label>
+          <Input
+            id="su-org"
+            value={organizationName}
+            onChange={(e) => setOrganizationName(e.target.value)}
+            placeholder="Organization name"
+            variant="md"
+          />
         </div>
         <div className="space-y-2">
           <Label htmlFor="su-email">{t('auth.email')}</Label>

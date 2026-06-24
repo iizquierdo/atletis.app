@@ -2465,36 +2465,88 @@ app.post('/api/auth/register', async (req, res) => {
         }
 
         const requestedCompanyId = String(req.body?.companyId || '').trim();
-        let companyId = requestedCompanyId;
 
-        if (!companyId) {
-            const firstCompany = await prisma.company.findFirst({ orderBy: { createdAt: 'asc' } });
-            if (!firstCompany) {
-                return res.status(400).json({ error: 'No company available. Create a company first.' });
+        let createdUserId: string;
+
+        if (requestedCompanyId) {
+            // Explicit company: add the user to an existing organization's company.
+            const company = await prisma.company.findUnique({ where: { id: requestedCompanyId } });
+            if (!company) {
+                return res.status(400).json({ error: 'companyId does not reference a valid company.' });
             }
-            companyId = firstCompany.id;
+            const created = await prisma.user.create({
+                data: {
+                    firstName,
+                    lastName,
+                    name: [firstName, lastName].filter(Boolean).join(' '),
+                    email,
+                    password,
+                    role: 'Administrator',
+                    companyId: requestedCompanyId
+                }
+            });
+            createdUserId = created.id;
+        } else {
+            // Self-service signup: provision a brand-new isolated organization for this user.
+            const organizationName =
+                String(req.body?.organizationName ?? '').trim() ||
+                [firstName, lastName].filter(Boolean).join(' ').trim() ||
+                email.split('@')[0];
+
+            createdUserId = await prisma.$transaction(async (tx: any) => {
+                const freePlan = await tx.subscriptionPlan.findUnique({ where: { code: 'FREE' } });
+                if (!freePlan) {
+                    const err = new Error('Default FREE subscription plan is missing. Run database migrations.');
+                    (err as any).status = 500;
+                    throw err;
+                }
+
+                const org = await tx.organization.create({
+                    data: { name: organizationName, subscriptionPlanId: freePlan.id }
+                });
+
+                const company = await tx.company.create({
+                    data: {
+                        name: org.name,
+                        organizationId: org.id,
+                        dateFormat: org.dateFormat,
+                        timeFormat: org.timeFormat,
+                        timezone: org.timezone,
+                        moneyFormat: org.moneyFormat,
+                        currencyPosition: org.currencyPosition,
+                        defaultLanguage: org.defaultLanguage,
+                        baseCurrency: org.baseCurrency ?? undefined
+                    }
+                });
+
+                const adminRole = await tx.role.findUnique({ where: { name: 'Administrator' } });
+
+                const user = await tx.user.create({
+                    data: {
+                        firstName,
+                        lastName,
+                        name: [firstName, lastName].filter(Boolean).join(' '),
+                        email,
+                        password,
+                        role: 'Administrator',
+                        roleId: adminRole?.id ?? null,
+                        companyId: company.id
+                    }
+                });
+
+                return user.id;
+            });
         }
 
-        const created = await prisma.user.create({
-            data: {
-                firstName,
-                lastName,
-                name: [firstName, lastName].filter(Boolean).join(' '),
-                email,
-                password,
-                role: 'Administrator',
-                companyId
-            }
-        });
-
         const token = createSessionToken();
-        await pool.query('UPDATE "User" SET "sessionToken" = $1, "updatedAt" = NOW() WHERE id = $2', [token, created.id]);
+        await pool.query('UPDATE "User" SET "sessionToken" = $1, "updatedAt" = NOW() WHERE id = $2', [token, createdUserId]);
 
-        const user = await getNormalizedUserById(created.id);
+        const user = await getNormalizedUserById(createdUserId);
         res.status(201).json({ token, user });
     } catch (error: any) {
         console.error('Error in POST /api/auth/register:', error);
-        res.status(500).json({ error: 'Failed to register', details: error.message });
+        const status = error?.status || 500;
+        res.status(status).json({ error: error?.message || 'Failed to register', details: error.message });
     }
 });
 
