@@ -1,0 +1,17 @@
+# Monorepo defaults for Railway/Nixpacks. Override per service in the Railway dashboard:
+#
+# API service
+#   Build:  pnpm install && pnpm build:api
+#   Start:  pnpm start:api
+#
+# Web service
+#   Build:  pnpm install && pnpm build:web
+#   Start:  pnpm start:web
+#
+# Root Directory for BOTH services must be the repo root (not apps/api or apps/web).
+
+[phases.setup]
+nixPkgs = ["nodejs_20"]
+
+[phases.install]
+cmds = ["npm i -g corepack", "corepack enable", "pnpm install --frozen-lockfile"]

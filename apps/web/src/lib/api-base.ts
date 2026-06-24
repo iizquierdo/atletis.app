@@ -6,7 +6,16 @@
 // Prod (two-service deploy): set VITE_API_BASE_URL=https://<api-domain> at BUILD
 // time. The installFetchRewrite() patch below transparently redirects every
 // /api/* and /storage/* call to that backend so existing code stays untouched.
-export const API_BASE = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
+const normalizeApiBase = (raw: string): string => {
+  const trimmed = String(raw || '').trim().replace(/\/$/, '');
+  if (!trimmed) return '';
+  if (trimmed.startsWith('/') || /^https?:\/\//i.test(trimmed)) return trimmed;
+  // Bare hostname (e.g. atletis-api.up.railway.app) — without https:// the browser
+  // treats the rewritten URL as a path on the current origin.
+  return `https://${trimmed}`;
+};
+
+export const API_BASE = normalizeApiBase(import.meta.env.VITE_API_BASE_URL || '');
 
 const shouldRewrite = (url: string): boolean =>
   url.startsWith('/api/') || url === '/api' || url.startsWith('/storage/') || url === '/storage';

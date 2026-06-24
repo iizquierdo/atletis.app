@@ -26,11 +26,13 @@ const resolveAllowedHosts = (env: Record<string, string>): true | string[] => {
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
-  const apiTarget = env.VITE_API_PROXY_TARGET || 'http://localhost:14000';
+  const apiTarget = env.VITE_API_PROXY_TARGET || process.env.VITE_API_PROXY_TARGET || 'http://localhost:14000';
   const allowedHosts = resolveAllowedHosts(env);
+  // Railway injects at build time via process.env; loadEnv only reads .env files.
+  const apiBaseUrl = process.env.VITE_API_BASE_URL ?? env.VITE_API_BASE_URL ?? '';
 
   return {
-    base: env.VITE_BASE_URL || '/',
+    base: env.VITE_BASE_URL || process.env.VITE_BASE_URL || '/',
     server: {
       port: Number(env.VITE_PORT || 13509),
       host: '0.0.0.0',
@@ -50,8 +52,9 @@ export default defineConfig(({ mode }) => {
     },
     plugins: [react(), tailwindcss()],
     define: {
-      'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY),
-      'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY)
+      'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY || process.env.GEMINI_API_KEY),
+      'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY || process.env.GEMINI_API_KEY),
+      'import.meta.env.VITE_API_BASE_URL': JSON.stringify(apiBaseUrl)
     },
     resolve: {
       alias: {
