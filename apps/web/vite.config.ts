@@ -2,6 +2,7 @@ import path from 'path';
 import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
+import { normalizeApiBase } from './src/lib/normalize-api-base';
 
 const parseAllowedHosts = (raw: string | undefined): true | string[] => {
   const list = String(raw ?? '')
@@ -28,8 +29,7 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
   const apiTarget = env.VITE_API_PROXY_TARGET || process.env.VITE_API_PROXY_TARGET || 'http://localhost:14000';
   const allowedHosts = resolveAllowedHosts(env);
-  // Railway injects at build time via process.env; loadEnv only reads .env files.
-  const apiBaseUrl = process.env.VITE_API_BASE_URL ?? env.VITE_API_BASE_URL ?? '';
+  const apiBaseUrl = normalizeApiBase(process.env.VITE_API_BASE_URL ?? env.VITE_API_BASE_URL ?? '');
 
   return {
     base: env.VITE_BASE_URL || process.env.VITE_BASE_URL || '/',
@@ -45,7 +45,10 @@ export default defineConfig(({ mode }) => {
     preview: {
       port: Number(process.env.PORT || env.VITE_PORT || 13509),
       host: '0.0.0.0',
-      allowedHosts
+      allowedHosts,
+      headers: {
+        'Cache-Control': 'no-cache, no-store, must-revalidate'
+      }
     },
     build: {
       chunkSizeWarningLimit: 3000

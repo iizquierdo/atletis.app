@@ -21,6 +21,13 @@
       "runtimeArgs": ["--filter", "@sinapsis/pwa-professor", "run", "dev"],
       "port": 13511,
       "autoPort": true
+    },
+    {
+      "name": "landing",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "@sinapsis/landing", "run", "dev"],
+      "port": 13512,
+      "autoPort": true
     }
   ]
 }

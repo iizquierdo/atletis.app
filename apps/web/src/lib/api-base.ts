@@ -6,14 +6,7 @@
 // Prod (two-service deploy): set VITE_API_BASE_URL=https://<api-domain> at BUILD
 // time. The installFetchRewrite() patch below transparently redirects every
 // /api/* and /storage/* call to that backend so existing code stays untouched.
-const normalizeApiBase = (raw: string): string => {
-  const trimmed = String(raw || '').trim().replace(/\/$/, '');
-  if (!trimmed) return '';
-  if (trimmed.startsWith('/') || /^https?:\/\//i.test(trimmed)) return trimmed;
-  // Bare hostname (e.g. atletis-api.up.railway.app) — without https:// the browser
-  // treats the rewritten URL as a path on the current origin.
-  return `https://${trimmed}`;
-};
+import { joinApiPath, normalizeApiBase } from './normalize-api-base';
 
 export const API_BASE = normalizeApiBase(import.meta.env.VITE_API_BASE_URL || '');
 
@@ -21,9 +14,8 @@ const shouldRewrite = (url: string): boolean =>
   url.startsWith('/api/') || url === '/api' || url.startsWith('/storage/') || url === '/storage';
 
 const rewrite = (url: string): string => {
-  if (!API_BASE) return url;
-  if (!shouldRewrite(url)) return url;
-  return `${API_BASE}${url}`;
+  if (!API_BASE || !shouldRewrite(url)) return url;
+  return joinApiPath(API_BASE, url);
 };
 
 export const apiUrl = (path: string): string => (shouldRewrite(path) ? rewrite(path) : path);
@@ -43,7 +35,6 @@ export const installFetchRewrite = (): void => {
       }
       return nativeFetch(input, init);
     }
-    // Request object: only rewrite same-origin /api or /storage
     const reqUrl = new URL(input.url, window.location.origin);
     if (reqUrl.origin === window.location.origin && shouldRewrite(reqUrl.pathname)) {
       const next = new Request(rewrite(reqUrl.pathname + reqUrl.search + reqUrl.hash), input);
