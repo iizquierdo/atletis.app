@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { toast } from 'sonner';
 import { AppUser, SYSTEM_LANGUAGES } from '../types';
 import UserProfile from './UserProfile';
 import { useTranslation } from 'react-i18next';
@@ -78,7 +79,7 @@ const UserManagement: React.FC<UserManagementProps> = ({ companyFilter, onSelect
 
   const fetchCompanies = async () => {
     try {
-      const res = await fetch(`/api/companies?status=Active&t=${Date.now()}`);
+      const res = await fetch(`/api/companies?status=Active&scope=org&t=${Date.now()}`);
       if (res.ok) {
         const data = await res.json();
         setCompanies(data);
@@ -131,9 +132,9 @@ const UserManagement: React.FC<UserManagementProps> = ({ companyFilter, onSelect
         password: '',
         role: 'Administrator',
         roleId: '',
-        companyId: '',
+        companyId: companyFilter || '',
         language: 'es',
-        accessCompanyIds: []
+        accessCompanyIds: companyFilter ? [companyFilter] : []
       });
     }
     setUserFormOpen(true);
@@ -182,7 +183,7 @@ const UserManagement: React.FC<UserManagementProps> = ({ companyFilter, onSelect
         fetchUsers();
       } else {
         const err = await res.json();
-        alert('Error: ' + (err.error || err.details || 'Failed to save user'));
+        toast.error(err.error || err.details || 'Error al guardar usuario');
       }
     } catch (error) {
       console.error('Error saving user:', error);
@@ -386,13 +387,91 @@ const UserManagement: React.FC<UserManagementProps> = ({ companyFilter, onSelect
 
   if (selectedUserId && selectedUser) {
     return (
-      <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-500">
-        <UserProfile
-          user={selectedUser}
-          onRefresh={fetchUsers}
-          onEdit={() => handleOpenModal(selectedUser)}
-        />
-      </div>
+      <>
+        <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-500">
+          <UserProfile
+            user={selectedUser}
+            onRefresh={fetchUsers}
+            onEdit={() => handleOpenModal(selectedUser)}
+          />
+        </div>
+        {userFormOpen && (
+          <div className="fixed inset-0 z-[100] flex items-start justify-center overflow-y-auto p-3 sm:items-center sm:p-4">
+            <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => setUserFormOpen(false)}></div>
+            <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[92vh] overflow-y-auto animate-in zoom-in-95 duration-200 border border-white/20">
+              <div className="px-4 sm:px-8 pt-5 sm:pt-8 pb-4 sm:pb-6 border-b border-slate-100">
+                <h3 className="text-2xl font-extrabold text-slate-900">
+                  {editingUser ? 'Editar Usuario' : 'Nuevo Usuario'}
+                </h3>
+                <p className="text-slate-500 font-medium text-sm mt-1">Completa la información para gestionar el acceso.</p>
+              </div>
+              <form onSubmit={handleSaveUser} className="p-4 sm:p-8 space-y-5 sm:space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Nombre</label>
+                    <input required type="text" value={userForm.firstName} onChange={e => setUserForm(p => ({ ...p, firstName: e.target.value }))} className="w-full px-4 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-red-400 focus:ring-1 focus:ring-red-400 transition-all font-medium" placeholder="Ej: Juan" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Apellido</label>
+                    <input required type="text" value={userForm.lastName} onChange={e => setUserForm(p => ({ ...p, lastName: e.target.value }))} className="w-full px-4 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-red-400 focus:ring-1 focus:ring-red-400 transition-all font-medium" placeholder="Ej: Pérez" />
+                  </div>
+                  <div className="md:col-span-2 space-y-1.5">
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Email</label>
+                    <input required type="email" value={userForm.email} onChange={e => setUserForm(p => ({ ...p, email: e.target.value }))} className="w-full px-4 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-red-400 focus:ring-1 focus:ring-red-400 transition-all font-medium" placeholder="usuario@ejemplo.com" />
+                  </div>
+                  <div className="md:col-span-2 space-y-1.5">
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Contraseña</label>
+                    <input required={!editingUser} type="password" value={userForm.password} onChange={e => setUserForm(p => ({ ...p, password: e.target.value }))} className="w-full px-4 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-red-400 focus:ring-1 focus:ring-red-400 transition-all font-medium" placeholder="••••••••" />
+                    {editingUser && <p className="text-[10px] text-slate-400 font-medium italic">Dejar en blanco para mantener la actual</p>}
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Rol</label>
+                    <select value={userForm.roleId} onChange={e => { const r = availableRoles.find(role => role.id === e.target.value); setUserForm(p => ({ ...p, roleId: e.target.value, role: r?.name || p.role })); }} className="w-full px-4 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-red-400 focus:ring-1 focus:ring-red-400 transition-all font-medium">
+                      <option value="">Seleccionar rol</option>
+                      {availableRoles.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+                    </select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Sucursal</label>
+                    <select required value={userForm.companyId} onChange={e => setUserForm(p => ({ ...p, companyId: e.target.value }))} className="w-full px-4 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-red-400 focus:ring-1 focus:ring-red-400 transition-all font-medium">
+                      <option value="">Seleccionar sucursal</option>
+                      {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    </select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Idioma</label>
+                    <select value={userForm.language} onChange={e => setUserForm(p => ({ ...p, language: e.target.value }))} className="w-full px-4 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-red-400 focus:ring-1 focus:ring-red-400 transition-all font-medium">
+                      {SYSTEM_LANGUAGES.map(lang => <option key={lang.code} value={lang.code}>{lang.name}</option>)}
+                    </select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Acceso a sucursales</label>
+                    <div className="border border-slate-200 rounded-xl bg-slate-50/50 p-2 space-y-2">
+                      <label className="flex items-center gap-2 px-2 py-1 rounded hover:bg-white text-sm font-semibold text-slate-700">
+                        <input type="checkbox" checked={userForm.accessCompanyIds.includes(ORG_ACCESS_ID)} onChange={handleToggleOrganizationAccess} />
+                        <span>Acceso a la organización</span>
+                      </label>
+                      <div className="h-px bg-slate-200"></div>
+                      <div className="max-h-28 overflow-y-auto space-y-1">
+                        {companies.map(c => (
+                          <label key={c.id} className="flex items-center gap-2 px-2 py-1 rounded hover:bg-white text-sm text-slate-700">
+                            <input type="checkbox" checked={userForm.accessCompanyIds.includes(c.id)} onChange={() => handleToggleAccessCompany(c.id)} />
+                            <span>{c.name}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 pt-4">
+                  <button type="button" onClick={() => setUserFormOpen(false)} className="w-full sm:flex-1 px-6 py-3 bg-white border border-slate-200 text-slate-600 font-bold rounded-xl hover:bg-slate-50 transition-all text-sm shadow-sm">Cancelar</button>
+                  <button type="submit" className="w-full sm:flex-1 px-6 py-3 bg-red-600 text-white font-bold rounded-xl hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-600 transition-all text-sm">{editingUser ? 'Guardar Cambios' : 'Crear Usuario'}</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+      </>
     );
   }
 
@@ -535,6 +614,7 @@ const UserManagement: React.FC<UserManagementProps> = ({ companyFilter, onSelect
                 <div className="space-y-1.5">
                   <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Sucursal</label>
                   <select
+                    required
                     value={userForm.companyId}
                     onChange={e => setUserForm(p => ({ ...p, companyId: e.target.value }))}
                     className="w-full px-4 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-red-400 focus:ring-1 focus:ring-red-400 transition-all font-medium"

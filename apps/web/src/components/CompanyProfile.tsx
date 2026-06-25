@@ -294,7 +294,7 @@ const CompanyProfile: React.FC<CompanyProfileProps> = ({ company, onEdit, onRefr
                                 <i className="fa-solid fa-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-xs"></i>
                             </div>
                         </div>
-                        <div className="space-y-1.5 md:col-span-2 lg:col-span-3 relative" ref={timezoneDropdownRef}>
+                        <div className="space-y-1.5 relative" ref={timezoneDropdownRef}>
                             <label className="block text-sm font-medium text-slate-700">{t('settings.timezone')}</label>
                             <button
                                 type="button"

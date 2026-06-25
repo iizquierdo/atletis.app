@@ -8,7 +8,7 @@ import {
   getSortedRowModel,
   useReactTable
 } from '@tanstack/react-table';
-import { Building2, Eye, IdCard, Mail, Pencil, Phone, Trash2, UserRound } from 'lucide-react';
+import { Building2, Eye, EyeOff, IdCard, Mail, Pencil, Phone, Trash2, UserRound } from 'lucide-react';
 import { Button } from '@webapp/components/ui/button';
 import { DataGridColumnHeader } from '@webapp/components/ui/data-grid-column-header';
 import { cn } from '@webapp/lib/utils';
@@ -65,7 +65,7 @@ interface ChildDetail {
 const inputClass =
   'w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 outline-none focus:border-red-400 focus:ring-2 focus:ring-red-100';
 
-const emptyForm = { firstName: '', lastName: '', email: '', document: '', phone: '', companyId: '', password: '' };
+const emptyForm = { firstName: '', lastName: '', email: '', phone: '', companyId: '', password: '' };
 
 const ParentsModule: React.FC<Props> = ({ view, setView, companyId, onSubTitleChange, recordId }) => {
   const { t } = useTranslation();
@@ -92,6 +92,7 @@ const ParentsModule: React.FC<Props> = ({ view, setView, companyId, onSubTitleCh
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState({ ...emptyForm });
+  const [showPassword, setShowPassword] = useState(false);
 
   // ---- Loaders ---------------------------------------------------------------
 
@@ -168,6 +169,7 @@ const ParentsModule: React.FC<Props> = ({ view, setView, companyId, onSubTitleCh
   const openCreate = () => {
     setEditingId(null);
     setForm({ ...emptyForm, companyId: companyId || companies[0]?.id || '' });
+    setShowPassword(false);
     setError('');
     setModalOpen(true);
   };
@@ -176,7 +178,7 @@ const ParentsModule: React.FC<Props> = ({ view, setView, companyId, onSubTitleCh
     setEditingId(p.id);
     setForm({
       firstName: p.firstName || '', lastName: p.lastName || '', email: p.email || '',
-      document: p.document || '', phone: p.phone || '', companyId: p.companyId || '', password: ''
+      phone: p.phone || '', companyId: p.companyId || '', password: ''
     });
     setError('');
     setModalOpen(true);
@@ -186,7 +188,6 @@ const ParentsModule: React.FC<Props> = ({ view, setView, companyId, onSubTitleCh
     e.preventDefault();
     if (!form.firstName.trim() || !form.lastName.trim()) return;
     if (!form.email.trim()) return setError(t('parents.errorEmailRequired'));
-    if (!form.companyId) return setError(t('parents.errorSedeRequired'));
     if (!editingId && !form.password) return setError(t('parents.errorPasswordRequired'));
     try {
       const payload: Record<string, unknown> = { ...form };
@@ -353,24 +354,28 @@ const ParentsModule: React.FC<Props> = ({ view, setView, companyId, onSubTitleCh
           <Field label={t('parents.lastName')}><input className={inputClass} value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} required /></Field>
           <Field label={t('parents.email')}><input type="email" className={inputClass} value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required /></Field>
           <Field label={t('parents.phone')}><input className={inputClass} value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></Field>
-          <Field label={t('parents.document')}><input className={inputClass} value={form.document} onChange={(e) => setForm({ ...form, document: e.target.value })} /></Field>
-          <Field label={t('parents.sede')}>
-            <select className={inputClass} value={form.companyId} onChange={(e) => setForm({ ...form, companyId: e.target.value })} required>
-              <option value="">—</option>
-              {companies.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
-          </Field>
         </div>
-        <Field label={editingId ? t('parents.passwordEdit') : t('parents.password')}>
-          <input
-            type="password"
-            className={inputClass}
-            value={form.password}
-            onChange={(e) => setForm({ ...form, password: e.target.value })}
-            placeholder={editingId ? t('parents.passwordPlaceholder') : ''}
-            {...(editingId ? {} : { required: true })}
-          />
-        </Field>
+        {!editingId && (
+          <Field label={t('parents.password')}>
+            <div className="relative">
+              <input
+                type={showPassword ? 'text' : 'password'}
+                className={inputClass}
+                value={form.password}
+                onChange={(e) => setForm({ ...form, password: e.target.value })}
+                required
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((v) => !v)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                tabIndex={-1}
+              >
+                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </div>
+          </Field>
+        )}
         <ModalActions onCancel={() => setModalOpen(false)} cancel={t('parents.cancel')} save={t('parents.save')} />
       </form>
     </Modal>

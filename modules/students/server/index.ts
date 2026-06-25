@@ -53,7 +53,11 @@ export default function registerStudentsModule({ app, pool }: StudentsModuleCont
   /** Returns the SQL WHERE fragment (+params) limiting students to those the requester may see. */
   const scopedStudentClause = (scope: RequesterScope | null, params: any[]): string => {
     if (!scope) return 'false';
-    if (scope.isSuperAdmin) return 'true';
+    if (scope.isSuperAdmin) {
+      if (!scope.organizationId) return 'true'; // platform-level admin with no company — unrestricted
+      params.push(scope.organizationId);
+      return `s."companyId" IN (SELECT id FROM "Company" WHERE "organizationId" = $${params.length})`;
+    }
     if (scope.isAdminSede) {
       if (!scope.companyScope.length) return 'false';
       params.push(scope.companyScope);
@@ -108,11 +112,11 @@ export default function registerStudentsModule({ app, pool }: StudentsModuleCont
     );
     const student = r.rows[0];
     if (!student) return null;
-    const hasClassStudent = await tableExists('ClassStudent');
-    const hasClass = await tableExists('Class');
-    const hasDiscipline = await tableExists('Discipline');
-    const hasSchedule = await tableExists('ClassSchedule');
-    const hasClassTeacher = await tableExists('ClassTeacher');
+    const [hasClassStudent, hasClass, hasDiscipline, hasSchedule, hasClassTeacher, hasStudentDiscipline, hasStudentTeacher, hasStudentTutor] = await Promise.all([
+      tableExists('ClassStudent'), tableExists('Class'), tableExists('Discipline'),
+      tableExists('ClassSchedule'), tableExists('ClassTeacher'),
+      tableExists('StudentDiscipline'), tableExists('StudentTeacher'), tableExists('StudentTutor'),
+    ]);
     const schedulesSubquery = hasSchedule
       ? `(SELECT json_agg(json_build_object('dayOfWeek', s."dayOfWeek", 'startTime', s."startTime", 'endTime', s."endTime") ORDER BY s."dayOfWeek" ASC, s."startTime" ASC)
           FROM "ClassSchedule" s WHERE s."classId" = cl.id)`
@@ -123,15 +127,21 @@ export default function registerStudentsModule({ app, pool }: StudentsModuleCont
           WHERE ct."classId" = cl.id AND ct.active)`
       : `'[]'::json`;
     const [disc, teachers, tutors, classes] = await Promise.all([
-      pool.query('SELECT * FROM "StudentDiscipline" WHERE "studentId" = $1', [id]),
-      pool.query(
-        `SELECT st.*, u.name AS "teacherName", u.email AS "teacherEmail",
-                COALESCE(u."imageUrl", u.avatar) AS "teacherAvatar"
-         FROM "StudentTeacher" st JOIN "User" u ON u.id = st."teacherId"
-         WHERE st."studentId" = $1 AND st.active = true`,
-        [id]
-      ),
-      pool.query('SELECT st.*, u.name AS "tutorName", u.email AS "tutorEmail" FROM "StudentTutor" st JOIN "User" u ON u.id = st."tutorId" WHERE st."studentId" = $1 ORDER BY st.active DESC, st."assignedAt" ASC', [id]),
+      hasStudentDiscipline
+        ? pool.query('SELECT * FROM "StudentDiscipline" WHERE "studentId" = $1', [id])
+        : Promise.resolve({ rows: [] }),
+      hasStudentTeacher
+        ? pool.query(
+            `SELECT st.*, u.name AS "teacherName", u.email AS "teacherEmail",
+                    COALESCE(u."imageUrl", u.avatar) AS "teacherAvatar"
+             FROM "StudentTeacher" st JOIN "User" u ON u.id = st."teacherId"
+             WHERE st."studentId" = $1 AND st.active = true`,
+            [id]
+          )
+        : Promise.resolve({ rows: [] }),
+      hasStudentTutor
+        ? pool.query('SELECT st.*, u.name AS "tutorName", u.email AS "tutorEmail" FROM "StudentTutor" st JOIN "User" u ON u.id = st."tutorId" WHERE st."studentId" = $1 ORDER BY st.active DESC, st."assignedAt" ASC', [id])
+        : Promise.resolve({ rows: [] }),
       hasClassStudent && hasClass
         ? pool.query(
             `SELECT cs.id, cs."classId", cs."levelId", cs.status,
@@ -160,7 +170,7 @@ export default function registerStudentsModule({ app, pool }: StudentsModuleCont
   };
 
   const syncRelations = async (studentId: string, body: any) => {
-    if (Array.isArray(body?.disciplineAssignments)) {
+    if (Array.isArray(body?.disciplineAssignments) && await tableExists('StudentDiscipline')) {
       await pool.query('DELETE FROM "StudentDiscipline" WHERE "studentId" = $1', [studentId]);
       for (const d of body.disciplineAssignments) {
         const disciplineId = String(d?.disciplineId || '').trim();
@@ -173,7 +183,7 @@ export default function registerStudentsModule({ app, pool }: StudentsModuleCont
         );
       }
     }
-    if (Array.isArray(body?.teacherIds)) {
+    if (Array.isArray(body?.teacherIds) && await tableExists('StudentTeacher')) {
       await pool.query('DELETE FROM "StudentTeacher" WHERE "studentId" = $1', [studentId]);
       for (const tid of body.teacherIds) {
         const teacherId = String(tid || '').trim();
@@ -181,13 +191,47 @@ export default function registerStudentsModule({ app, pool }: StudentsModuleCont
         await pool.query('INSERT INTO "StudentTeacher" (id, "studentId", "teacherId", active, "assignedAt") VALUES ($1, $2, $3, true, NOW()) ON CONFLICT ("studentId", "teacherId") DO UPDATE SET active = true', [crypto.randomUUID(), studentId, teacherId]);
       }
     }
-    if (Array.isArray(body?.tutorIds)) {
+    if (Array.isArray(body?.tutorIds) && await tableExists('StudentTutor')) {
       await pool.query('DELETE FROM "StudentTutor" WHERE "studentId" = $1', [studentId]);
       for (const tid of body.tutorIds) {
         const tutorId = String(tid || '').trim();
         if (!tutorId) continue;
         await pool.query('INSERT INTO "StudentTutor" (id, "studentId", "tutorId", active, "assignedAt") VALUES ($1, $2, $3, true, NOW()) ON CONFLICT ("studentId", "tutorId") DO UPDATE SET active = true', [crypto.randomUUID(), studentId, tutorId]);
       }
+    }
+  };
+
+  const ensureStudentReferenceRow = async (companyId: string) => {
+    const existing = await pool.query(
+      `SELECT id FROM "Reference" WHERE "companyId" = $1 AND module = 'STUDENTS' AND COALESCE(code, '') = 'STUDENTS' LIMIT 1`,
+      [companyId]
+    );
+    if (existing.rows[0]) return;
+    // Try to clone from core template (companyId IS NULL)
+    const template = await pool.query(
+      `SELECT prefix, sufix, digits, clone FROM "Reference" WHERE "companyId" IS NULL AND module = 'STUDENTS' AND COALESCE(code, '') = 'STUDENTS' LIMIT 1`
+    );
+    if (template.rows[0]) {
+      const t = template.rows[0];
+      await pool.query(
+        `INSERT INTO "Reference" (id, "companyId", module, code, reference, prefix, sufix, digits, clone, "createdAt", "updatedAt")
+         VALUES (gen_random_uuid(), $1, 'STUDENTS', 'STUDENTS', 0, $2, $3, $4, $5, NOW(), NOW())
+         ON CONFLICT DO NOTHING`,
+        [companyId, t.prefix, t.sufix, t.digits, t.clone]
+      );
+    } else {
+      // No core template exists either — create both
+      await pool.query(
+        `INSERT INTO "Reference" (id, "companyId", module, code, reference, prefix, sufix, digits, clone, "createdAt", "updatedAt")
+         VALUES (gen_random_uuid(), NULL, 'STUDENTS', 'STUDENTS', 0, NULL, NULL, 4, 0, NOW(), NOW())
+         ON CONFLICT DO NOTHING`
+      );
+      await pool.query(
+        `INSERT INTO "Reference" (id, "companyId", module, code, reference, prefix, sufix, digits, clone, "createdAt", "updatedAt")
+         VALUES (gen_random_uuid(), $1, 'STUDENTS', 'STUDENTS', 0, NULL, NULL, 4, 0, NOW(), NOW())
+         ON CONFLICT DO NOTHING`,
+        [companyId]
+      );
     }
   };
 
@@ -230,12 +274,24 @@ export default function registerStudentsModule({ app, pool }: StudentsModuleCont
 
       const catMap = await fetchMergedItemsByCategoryCodes(pool, { codes: META_CODES, organizationId, companyIdContext: null, activeOnly: true });
 
-      // Staff users available as teachers/tutors (whole org).
-      const staff = await pool.query(
-        `SELECT u.id, u.name, u.email, COALESCE(r.name, u.role) AS "roleName", u."companyId"
-         FROM "User" u LEFT JOIN "Role" r ON r.id = u."roleId"
-         ORDER BY u.name ASC`
-      );
+      // Staff users available as teachers/tutors — scoped to the requester's organization.
+      const scope = uid ? await resolveRequesterScope(pool, uid) : null;
+      const staffOrgId = scope?.organizationId || null;
+      const staff = staffOrgId
+        ? await pool.query(
+            `SELECT u.id, u.name, u.email, COALESCE(r.name, u.role) AS "roleName", u."companyId"
+             FROM "User" u
+             LEFT JOIN "Role" r ON r.id = u."roleId"
+             JOIN "Company" c ON c.id = u."companyId"
+             WHERE c."organizationId" = $1
+             ORDER BY u.name ASC`,
+            [staffOrgId]
+          )
+        : await pool.query(
+            `SELECT u.id, u.name, u.email, COALESCE(r.name, u.role) AS "roleName", u."companyId"
+             FROM "User" u LEFT JOIN "Role" r ON r.id = u."roleId"
+             ORDER BY u.name ASC`
+          );
 
       // Disciplines (+levels) only if that module is installed.
       let disciplines: any[] = [];
@@ -285,14 +341,14 @@ export default function registerStudentsModule({ app, pool }: StudentsModuleCont
       if (status) { params.push(status); where.push(`s.status = $${params.length}`); }
       if (companyId && scope?.isSuperAdmin) { params.push(companyId); where.push(`s."companyId" = $${params.length}`); }
 
-      const hasDisciplineTable = await tableExists('Discipline');
-      const disciplinesSubquery = hasDisciplineTable
-        ? `COALESCE((SELECT json_agg(d.name ORDER BY d.name) FROM "StudentDiscipline" sd JOIN "Discipline" d ON d.id = sd."disciplineId" WHERE sd."studentId" = s.id AND sd.status = 'ACTIVE'), '[]'::json)`
+      const hasClassTable = await tableExists('Class');
+      const classesSubquery = hasClassTable
+        ? `COALESCE((SELECT json_agg(cl.name ORDER BY cl.name) FROM "ClassStudent" cs JOIN "Class" cl ON cl.id = cs."classId" WHERE cs."studentId" = s.id AND cs.status = 'ACTIVE'), '[]'::json)`
         : `'[]'::json`;
       const result = await pool.query(
         `SELECT s.id, s.code, s."firstName", s."lastName", s.document, s.status, s."companyId", s."imageUrl",
                 c.name AS "companyName",
-                ${disciplinesSubquery} AS "disciplineNames"
+                ${classesSubquery} AS "classNames"
          FROM "Student" s JOIN "Company" c ON c.id = s."companyId"
          WHERE ${where.join(' AND ')}
          ORDER BY s."lastName" ASC, s."firstName" ASC`,
@@ -319,6 +375,7 @@ export default function registerStudentsModule({ app, pool }: StudentsModuleCont
       if (scope.isAdminSede && !scope.companyScope.includes(companyId)) return res.status(403).json({ error: 'Company out of scope.' });
 
       const id = crypto.randomUUID();
+      await ensureStudentReferenceRow(companyId);
       const code = await reserveNextReference(pool, { companyId, module: 'STUDENTS', code: 'STUDENTS' });
       await pool.query(
         `INSERT INTO "Student" (id, code, "firstName", "lastName", document, "birthDate", gender, email, phone, address,

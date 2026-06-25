@@ -8,12 +8,13 @@ import {
   getSortedRowModel,
   useReactTable
 } from '@tanstack/react-table';
-import { Building2, Eye, IdCard, Mail, Pencil, Power, PowerOff, Trash2 } from 'lucide-react';
+import { Building2, Eye, IdCard, Mail, Pencil, Power, PowerOff, Trash2, Upload } from 'lucide-react';
 import { Button } from '@webapp/components/ui/button';
 import { DataGridColumnHeader } from '@webapp/components/ui/data-grid-column-header';
 import { cn } from '@webapp/lib/utils';
 import ListCard from '@webapp/components/shared/ListCard';
 import ProfileHeader from '@webapp/components/shared/ProfileHeader';
+import ImportModal from '@webapp/components/shared/ImportModal';
 
 // ---- Rating themes ----------------------------------------------------------
 
@@ -147,7 +148,7 @@ interface CompanyItem { id: string; name: string }
 interface StudentRow {
   id: string; code: string; firstName: string; lastName: string; document?: string | null;
   status: string; companyId: string; companyName?: string; imageUrl?: string | null;
-  disciplineNames?: string[];
+  classNames?: string[];
 }
 
 interface Enrollment { id: string; disciplineId: string; levelId?: string | null; status: string }
@@ -181,6 +182,7 @@ const StudentModule: React.FC<Props> = ({ view, setView, currentUser, companyId,
 
   const [meta, setMeta] = useState<{ genders: MetaItem[]; statuses: MetaItem[]; reportTypes: MetaItem[]; reportVisibilities: MetaItem[]; staff: StaffItem[]; disciplines: DisciplineItem[] }>({ genders: [], statuses: [], reportTypes: [], reportVisibilities: [], staff: [], disciplines: [] });
   const [companies, setCompanies] = useState<CompanyItem[]>([]);
+  const [importOpen, setImportOpen] = useState(false);
 
   const [selected, setSelected] = useState<any>(null);
   const [activeTab, setActiveTab] = useState<'Overview' | 'Disciplines' | 'Staff' | 'Reports' | 'Conversations' | 'Communities'>('Overview');
@@ -302,6 +304,49 @@ const StudentModule: React.FC<Props> = ({ view, setView, currentUser, companyId,
   }, [view, activeTab, selected?.id]);
 
   const openDetails = (s: StudentRow) => { setActiveTab('Overview'); setView('StudentDetails', { id: s.id }); };
+
+  const studentImportColumns = [
+    { key: 'firstName', header: 'Nombre', required: true, example: 'Juan' },
+    { key: 'lastName', header: 'Apellido', required: true, example: 'Pérez' },
+    { key: 'email', header: 'Email', example: 'juan@email.com' },
+    { key: 'phone', header: 'Teléfono', example: '1122334455' },
+    { key: 'document', header: 'Documento', example: '12345678' },
+    { key: 'birthDate', header: 'FechaNacimiento', example: '2000-01-15' },
+    { key: 'gender', header: 'Género', example: 'M' },
+  ];
+
+  const handleStudentImport = async (rows: Record<string, string>[]) => {
+    let success = 0;
+    const errors: { row: number; message: string }[] = [];
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      const rowNum = i + 2;
+      if (!row.firstName || !row.lastName) {
+        errors.push({ row: rowNum, message: 'Nombre y Apellido son requeridos' });
+        continue;
+      }
+      try {
+        const res = await fetch('/api/students', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            firstName: row.firstName, lastName: row.lastName,
+            email: row.email || '', phone: row.phone || '', document: row.document || '',
+            birthDate: row.birthDate || '', gender: row.gender || '',
+            status: 'ACTIVE',
+          }),
+        });
+        if (!res.ok) {
+          const b = await res.json().catch(() => ({}));
+          errors.push({ row: rowNum, message: b?.details || b?.error || 'Error al crear' });
+        } else {
+          success++;
+        }
+      } catch { errors.push({ row: rowNum, message: 'Error de conexión' }); }
+    }
+    if (success > 0) await loadStudents();
+    return { success, errors };
+  };
 
   const openCreate = () => {
     setEditingId(null);
@@ -554,11 +599,11 @@ const StudentModule: React.FC<Props> = ({ view, setView, currentUser, companyId,
         cell: ({ row }) => <span className="text-sm text-muted-foreground">{row.original.companyName || '—'}</span>
       },
       {
-        id: 'disciplines',
-        accessorFn: (row) => (row.disciplineNames || []).join(', '),
-        header: ({ column }) => <DataGridColumnHeader column={column} title={t('students.disciplines')} />,
+        id: 'classes',
+        accessorFn: (row) => (row.classNames || []).join(', '),
+        header: ({ column }) => <DataGridColumnHeader column={column} title={t('students.classes')} />,
         cell: ({ row }) => {
-          const names = row.original.disciplineNames || [];
+          const names = row.original.classNames || [];
           if (!names.length) return <span className="text-sm text-muted-foreground">—</span>;
           return (
             <div className="flex flex-wrap gap-1">
@@ -1126,9 +1171,24 @@ const StudentModule: React.FC<Props> = ({ view, setView, currentUser, companyId,
         isLoading={loading}
         emptyMessage={t('students.noStudents')}
         onRowClick={(s) => openDetails(s)}
+        toolbarExtras={
+          <Button type="button" variant="outline" onClick={() => setImportOpen(true)}>
+            <Upload className="size-4" />
+            Importar
+          </Button>
+        }
       />
 
       {studentModalOpen && StudentForm()}
+      {importOpen && (
+        <ImportModal
+          title="Importar Alumnos"
+          templateFilename="plantilla-alumnos.xlsx"
+          columns={studentImportColumns}
+          onImport={handleStudentImport}
+          onClose={() => setImportOpen(false)}
+        />
+      )}
     </>
   );
 };

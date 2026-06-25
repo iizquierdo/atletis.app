@@ -432,8 +432,9 @@ const ConfigurationPage: React.FC = () => {
           <CardTitle className="normal-case text-sm font-semibold">Localización y formatos</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-2">
+          <div className="grid gap-4 grid-cols-12">
+            {/* Fila 1: Formato de fecha | Formato de hora | Zona horaria */}
+            <div className="space-y-2 col-span-4">
               <Label htmlFor="core-date-format">Formato de fecha</Label>
               <select
                 id="core-date-format"
@@ -449,7 +450,7 @@ const ConfigurationPage: React.FC = () => {
                 ))}
               </select>
             </div>
-            <div className="space-y-2">
+            <div className="space-y-2 col-span-4">
               <Label htmlFor="core-time-format">Formato de hora</Label>
               <select
                 id="core-time-format"
@@ -465,7 +466,7 @@ const ConfigurationPage: React.FC = () => {
                 ))}
               </select>
             </div>
-            <div className="space-y-2 md:col-span-2">
+            <div className="space-y-2 col-span-4">
               <Label htmlFor="core-tz-search">Zona horaria</Label>
               <Input
                 id="core-tz-search"
@@ -489,7 +490,8 @@ const ConfigurationPage: React.FC = () => {
                 ))}
               </select>
             </div>
-            <div className="space-y-2">
+            {/* Fila 2: Moneda base | Formato de moneda | Posición de la moneda */}
+            <div className="space-y-2 col-span-4">
               <Label htmlFor="core-currency">Moneda base</Label>
               <select
                 id="core-currency"
@@ -505,8 +507,8 @@ const ConfigurationPage: React.FC = () => {
                 ))}
               </select>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="core-money-format">Formato de importes</Label>
+            <div className="space-y-2 col-span-4">
+              <Label htmlFor="core-money-format">Formato de moneda</Label>
               <select
                 id="core-money-format"
                 className={selectClass}
@@ -521,8 +523,8 @@ const ConfigurationPage: React.FC = () => {
                 ))}
               </select>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="core-currency-pos">Posición del símbolo de moneda</Label>
+            <div className="space-y-2 col-span-4">
+              <Label htmlFor="core-currency-pos">Posición de la moneda</Label>
               <select
                 id="core-currency-pos"
                 className={selectClass}
@@ -537,7 +539,8 @@ const ConfigurationPage: React.FC = () => {
                 ))}
               </select>
             </div>
-            <div className="space-y-2 md:col-span-2">
+            {/* Fila 3: Idioma (1/4 del ancho) */}
+            <div className="space-y-2 col-span-3">
               <Label htmlFor="core-lang">Idioma por defecto</Label>
               <select
                 id="core-lang"

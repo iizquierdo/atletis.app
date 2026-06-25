@@ -120,11 +120,13 @@ async function main() {
         // 5. Crear Roles y Permisos
         console.log('Creando roles...');
         const rolesData = [
-            { name: 'Administrator', description: 'Full access to everything' },
-            { name: 'Analyst', description: 'Can view and analyze data' },
-            { name: 'Developer', description: 'Technical access' },
-            { name: 'Support', description: 'Customer support access' },
+            { name: 'Super Admin', description: 'Control total del tenant' },
+            { name: 'Administrador', description: 'Gestión administrativa' },
+            { name: 'Profesor', description: 'Acceso de instructor' },
         ];
+
+        // Módulos del sistema (no operativos) — Administrador y Profesor tienen acceso restringido
+        const SYSTEM_MODULE_CODES = ['ROLES', 'MODULES'];
 
         const createdRoles: any = {};
         for (const r of rolesData) {
@@ -132,44 +134,37 @@ async function main() {
             createdRoles[r.name] = role;
             console.log('Rol creado:', r.name);
 
-            // Give full permissions to Administrator
-            if (r.name === 'Administrator') {
-                for (const mod of createdModules) {
-                    await prisma.permission.create({
-                        data: {
-                            roleId: role.id,
-                            moduleId: mod.id,
-                            canRead: true,
-                            canWrite: true,
-                            canCreate: true,
-                            canDelete: true
-                        }
-                    });
+            for (const mod of createdModules) {
+                const isSystemModule = SYSTEM_MODULE_CODES.includes(mod.code);
+
+                let perms = { canRead: false, canWrite: false, canCreate: false, canDelete: false };
+
+                if (r.name === 'Super Admin') {
+                    // Acceso total a todo
+                    perms = { canRead: true, canWrite: true, canCreate: true, canDelete: true };
+                } else if (r.name === 'Administrador') {
+                    // Acceso total en módulos operativos, solo lectura en módulos de sistema
+                    perms = isSystemModule
+                        ? { canRead: true, canWrite: false, canCreate: false, canDelete: false }
+                        : { canRead: true, canWrite: true, canCreate: true, canDelete: true };
+                } else if (r.name === 'Profesor') {
+                    // Solo lectura en módulos de sistema, lectura + escritura en operativos
+                    perms = isSystemModule
+                        ? { canRead: false, canWrite: false, canCreate: false, canDelete: false }
+                        : { canRead: true, canWrite: true, canCreate: false, canDelete: false };
                 }
-            } else {
-                // Give Read permissions for others by default
-                for (const mod of createdModules) {
-                    await prisma.permission.create({
-                        data: {
-                            roleId: role.id,
-                            moduleId: mod.id,
-                            canRead: true,
-                            canWrite: false,
-                            canCreate: false,
-                            canDelete: false
-                        }
-                    });
-                }
+
+                await prisma.permission.create({
+                    data: { roleId: role.id, moduleId: mod.id, ...perms }
+                });
             }
         }
 
         // 6. Crear Usuarios iniciales
         const users = [
-            { email: 'admin@sinapsis.app', firstName: 'Super', lastName: 'Admin', name: 'Super Admin', password: 'Admin1234', companyId: company.id, role: 'Administrator', roleId: createdRoles['Administrator'].id },
-            { email: 'emma@sinapsis.app', firstName: 'Emma', lastName: 'Smith', name: 'Emma Smith', password: 'Emma1234', companyId: company.id, role: 'Analyst', roleId: createdRoles['Analyst'].id },
-            { email: 'melody@sinapsis.app', firstName: 'Melody', lastName: 'Macy', name: 'Melody Macy', password: 'Melody1234', companyId: company.id, role: 'Analyst', roleId: createdRoles['Analyst'].id },
-            { email: 'max@sinapsis.app', firstName: 'Max', lastName: 'Smith', name: 'Max Smith', password: 'Max1234', companyId: company2.id, role: 'Developer', roleId: createdRoles['Developer'].id },
-            { email: 'sean@sinapsis.app', firstName: 'Sean', lastName: 'Bean', name: 'Sean Bean', password: 'Sean1234', companyId: company.id, role: 'Support', roleId: createdRoles['Support'].id },
+            { email: 'admin@sinapsis.app', firstName: 'Super', lastName: 'Admin', name: 'Super Admin', password: 'Admin1234', companyId: company.id, role: 'Super Admin', roleId: createdRoles['Super Admin'].id },
+            { email: 'admin2@sinapsis.app', firstName: 'Admin', lastName: 'Demo', name: 'Admin Demo', password: 'Admin1234', companyId: company.id, role: 'Administrador', roleId: createdRoles['Administrador'].id },
+            { email: 'profesor@sinapsis.app', firstName: 'Profesor', lastName: 'Demo', name: 'Profesor Demo', password: 'Profesor1234', companyId: company.id, role: 'Profesor', roleId: createdRoles['Profesor'].id },
         ];
 
         for (const u of users) {

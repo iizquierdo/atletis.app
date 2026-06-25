@@ -715,7 +715,8 @@ const isOrgAdmin = async (poolRef: pg.Pool, userId: string): Promise<boolean> =>
     if (!row) return false;
     const legacy = String(row.legacyRole || '');
     const roleName = String(row.roleName || '');
-    return legacy === 'administrator' || legacy === 'admin' || roleName === 'administrator';
+    return legacy === 'administrator' || legacy === 'admin' ||
+        roleName === 'administrator' || roleName === 'super admin' || roleName === 'administrador';
 };
 
 const assertCompanyInTenantScope = async (pool: pg.Pool, ctx: TenantAuthContext, companyId: string) => {
@@ -2126,6 +2127,24 @@ app.post('/api/companies', async (req, res) => {
         const newCompany = result.rows[0];
         await cloneAllCoreReferencesToCompany(client, newCompany.id);
         await client.query('COMMIT');
+
+        // Auto-grant org admins access to the new company
+        await pool.query(
+            `UPDATE "User"
+             SET "accessCompanyIds" = array_append(COALESCE("accessCompanyIds", ARRAY[]::text[]), $1),
+                 "updatedAt" = NOW()
+             WHERE "companyId" IN (SELECT id FROM "Company" WHERE "organizationId" = $2)
+               AND (
+                   LOWER(role) IN ('administrator', 'admin')
+                   OR "roleId" IN (
+                       SELECT id FROM "Role"
+                       WHERE LOWER(name) IN ('super admin', 'administrador', 'administrator')
+                   )
+               )
+               AND NOT (COALESCE("accessCompanyIds", ARRAY[]::text[]) @> ARRAY[$1]::text[])`,
+            [newCompany.id, ctx.organizationId]
+        );
+
         res.json(newCompany);
     } catch (error: any) {
         try {
@@ -2611,7 +2630,10 @@ app.post('/api/auth/register', async (req, res) => {
                     }
                 });
 
-                const adminRole = await tx.role.findUnique({ where: { name: 'Administrator' } });
+                const adminRole = await tx.role.findFirst({
+                    where: { name: { in: ['Super Admin', 'Administrator'] } },
+                    orderBy: { name: 'desc' } // 'Super Admin' > 'Administrator' alfabéticamente
+                });
 
                 const user = await tx.user.create({
                     data: {
@@ -2622,7 +2644,8 @@ app.post('/api/auth/register', async (req, res) => {
                         password,
                         role: 'Administrator',
                         roleId: adminRole?.id ?? null,
-                        companyId: company.id
+                        companyId: company.id,
+                        accessCompanyIds: ['org', company.id]
                     }
                 });
 
@@ -2833,7 +2856,8 @@ app.post('/api/users', async (req, res) => {
         }
         if (Array.isArray(accessCompanyIds)) {
             for (const cid of accessCompanyIds) {
-                if (!cid || !(await assertCompanyBelongsToOrg(pool, ctx.organizationId, String(cid)))) {
+                if (!cid || cid === 'org') continue;
+                if (!(await assertCompanyBelongsToOrg(pool, ctx.organizationId, String(cid)))) {
                     return res.status(400).json({ error: 'accessCompanyIds must reference companies in your organization.' });
                 }
             }
@@ -2890,7 +2914,8 @@ app.put('/api/users/:id', async (req, res) => {
         }
         if (Array.isArray(accessCompanyIds)) {
             for (const cid of accessCompanyIds) {
-                if (!cid || !(await assertCompanyBelongsToOrg(pool, ctx.organizationId, String(cid)))) {
+                if (!cid || cid === 'org') continue;
+                if (!(await assertCompanyBelongsToOrg(pool, ctx.organizationId, String(cid)))) {
                     return res.status(400).json({ error: 'accessCompanyIds must reference companies in your organization.' });
                 }
             }

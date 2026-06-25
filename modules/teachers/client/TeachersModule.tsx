@@ -8,12 +8,13 @@ import {
   getSortedRowModel,
   useReactTable
 } from '@tanstack/react-table';
-import { Building2, CalendarDays, Eye, FileText, GraduationCap, Mail, MessageSquare, Pencil, Trash2, UserRound, Users } from 'lucide-react';
+import { Building2, CalendarDays, Eye, FileText, GraduationCap, Mail, MessageSquare, Pencil, Trash2, Upload, UserRound, Users } from 'lucide-react';
 import { Button } from '@webapp/components/ui/button';
 import { DataGridColumnHeader } from '@webapp/components/ui/data-grid-column-header';
 import { cn } from '@webapp/lib/utils';
 import ListCard from '@webapp/components/shared/ListCard';
 import ProfileHeader from '@webapp/components/shared/ProfileHeader';
+import ImportModal from '@webapp/components/shared/ImportModal';
 
 type TeacherView = 'list' | 'details';
 type DetailTab = 'Overview' | 'Classes' | 'Students' | 'Communities' | 'Messages' | 'Reports';
@@ -208,6 +209,7 @@ const TeachersModule: React.FC<Props> = ({ view, setView, companyId, onSubTitleC
   const [companies, setCompanies] = useState<CompanyItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [importOpen, setImportOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [sorting, setSorting] = useState<SortingState>([]);
 
@@ -557,6 +559,47 @@ const TeachersModule: React.FC<Props> = ({ view, setView, companyId, onSubTitleC
   };
 
   // ---- Teacher CRUD ----------------------------------------------------------
+
+  const teacherImportColumns = [
+    { key: 'firstName', header: 'Nombre', required: true, example: 'María' },
+    { key: 'lastName', header: 'Apellido', required: true, example: 'García' },
+    { key: 'email', header: 'Email', required: true, example: 'maria@email.com' },
+    { key: 'phone', header: 'Teléfono', example: '1122334455' },
+    { key: 'document', header: 'Documento', example: '87654321' },
+    { key: 'password', header: 'Contraseña', required: true, example: 'Pass1234' },
+    { key: 'companyName', header: 'Sede', required: true, example: 'Sede Central' },
+  ];
+
+  const handleTeacherImport = async (rows: Record<string, string>[]) => {
+    let success = 0;
+    const errors: { row: number; message: string }[] = [];
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      const rowNum = i + 2;
+      if (!row.firstName || !row.lastName) { errors.push({ row: rowNum, message: 'Nombre y Apellido son requeridos' }); continue; }
+      if (!row.email) { errors.push({ row: rowNum, message: 'Email es requerido' }); continue; }
+      if (!row.password) { errors.push({ row: rowNum, message: 'Contraseña es requerida' }); continue; }
+      const company = row.companyName
+        ? companies.find((c) => c.name.toLowerCase() === row.companyName.toLowerCase())
+        : companies[0];
+      if (!company) { errors.push({ row: rowNum, message: `Sede "${row.companyName}" no encontrada` }); continue; }
+      try {
+        const res = await fetch('/api/teachers', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            firstName: row.firstName, lastName: row.lastName, email: row.email,
+            phone: row.phone || '', document: row.document || '',
+            password: row.password, companyId: company.id,
+          }),
+        });
+        if (!res.ok) { const b = await res.json().catch(() => ({})); errors.push({ row: rowNum, message: b?.error || 'Error al crear' }); }
+        else success++;
+      } catch { errors.push({ row: rowNum, message: 'Error de conexión' }); }
+    }
+    if (success > 0) await loadTeachers();
+    return { success, errors };
+  };
 
   const openCreate = () => {
     setEditingId(null);
@@ -1218,9 +1261,24 @@ const TeachersModule: React.FC<Props> = ({ view, setView, companyId, onSubTitleC
         isLoading={loading}
         emptyMessage={t('teachers.noTeachers')}
         onRowClick={(p) => setView('TeacherDetails', { id: p.id })}
+        toolbarExtras={
+          <Button type="button" variant="outline" onClick={() => setImportOpen(true)}>
+            <Upload className="size-4" />
+            Importar
+          </Button>
+        }
       />
 
       {teacherModal}
+      {importOpen && (
+        <ImportModal
+          title="Importar Profesores"
+          templateFilename="plantilla-profesores.xlsx"
+          columns={teacherImportColumns}
+          onImport={handleTeacherImport}
+          onClose={() => setImportOpen(false)}
+        />
+      )}
     </>
   );
 };

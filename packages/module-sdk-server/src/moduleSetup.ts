@@ -198,6 +198,8 @@ export type RequesterScope = {
   isTutor: boolean;
   isStaff: boolean;
   primaryCompanyId: string | null;
+  /** Organization (tenant) the user belongs to — null for platform-level super admins with no company. */
+  organizationId: string | null;
   accessCompanyIds: string[];
   /** Companies an Admin Sede may act on (primary + access). */
   companyScope: string[];
@@ -216,9 +218,11 @@ export const resolveRequesterScope = async (pool: PgExec, userId: string): Promi
             COALESCE(u.role, '') AS "legacyRole",
             COALESCE(r.name, '') AS "roleName",
             u."companyId" AS "companyId",
-            u."accessCompanyIds" AS "accessCompanyIdsRaw"
+            u."accessCompanyIds" AS "accessCompanyIdsRaw",
+            c."organizationId" AS "organizationId"
      FROM "User" u
      LEFT JOIN "Role" r ON r.id = u."roleId"
+     LEFT JOIN "Company" c ON c.id = u."companyId"
      WHERE u.id = $1
      LIMIT 1`,
     [id]
@@ -235,6 +239,7 @@ export const resolveRequesterScope = async (pool: PgExec, userId: string): Promi
   const isProfesor = roleName === NATACION_ROLES.PROFESOR;
   const isTutor = roleName === NATACION_ROLES.TUTOR;
   const primaryCompanyId = row.companyId ? String(row.companyId) : null;
+  const organizationId = row.organizationId ? String(row.organizationId) : null;
   const accessCompanyIds = parseAccessCompanyIds(row.accessCompanyIdsRaw);
   const companyScope = Array.from(new Set([...(primaryCompanyId ? [primaryCompanyId] : []), ...accessCompanyIds]));
 
@@ -248,6 +253,7 @@ export const resolveRequesterScope = async (pool: PgExec, userId: string): Promi
     isTutor,
     isStaff: isSuperAdmin || isAdminSede,
     primaryCompanyId,
+    organizationId,
     accessCompanyIds,
     companyScope
   };

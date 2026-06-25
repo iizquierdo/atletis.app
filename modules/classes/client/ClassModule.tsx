@@ -8,12 +8,13 @@ import {
   getSortedRowModel,
   useReactTable
 } from '@tanstack/react-table';
-import { Building2, CalendarDays, Check, ChevronDown, Eye, Layers, Pencil, Power, PowerOff, Trash2, UserPlus, Users, X } from 'lucide-react';
+import { Building2, CalendarDays, Check, ChevronDown, Eye, Layers, Pencil, Power, PowerOff, Trash2, Upload, UserPlus, Users, X } from 'lucide-react';
 import { Button } from '@webapp/components/ui/button';
 import { DataGridColumnHeader } from '@webapp/components/ui/data-grid-column-header';
 import { cn } from '@webapp/lib/utils';
 import ListCard from '@webapp/components/shared/ListCard';
 import ProfileHeader from '@webapp/components/shared/ProfileHeader';
+import ImportModal from '@webapp/components/shared/ImportModal';
 
 type ClassView = 'list' | 'details';
 
@@ -117,6 +118,7 @@ const ClassModule: React.FC<Props> = ({ view, setView, currentUser, companyId, o
   const [commCreating, setCommCreating] = useState(false);
 
   const [modalOpen, setModalOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState({ ...emptyForm });
 
@@ -296,6 +298,48 @@ const ClassModule: React.FC<Props> = ({ view, setView, currentUser, companyId, o
   };
 
   const openDetails = (c: ClassRow) => { setActiveTab('Overview'); setView('ClassDetails', { id: c.id }); };
+
+  const classImportColumns = [
+    { key: 'name', header: 'Nombre', required: true, example: 'Natación Avanzada' },
+    { key: 'description', header: 'Descripción', example: 'Clase para nadadores avanzados' },
+    { key: 'disciplineName', header: 'Disciplina', required: true, example: 'Natación' },
+    { key: 'companyName', header: 'Sede', required: true, example: 'Sede Central' },
+    { key: 'capacity', header: 'Capacidad', example: '20' },
+  ];
+
+  const handleClassImport = async (rows: Record<string, string>[]) => {
+    let success = 0;
+    const errors: { row: number; message: string }[] = [];
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      const rowNum = i + 2;
+      if (!row.name) { errors.push({ row: rowNum, message: 'Nombre es requerido' }); continue; }
+      const discipline = row.disciplineName
+        ? meta.disciplines.find((d) => d.name.toLowerCase() === row.disciplineName.toLowerCase())
+        : null;
+      if (!discipline) { errors.push({ row: rowNum, message: `Disciplina "${row.disciplineName}" no encontrada` }); continue; }
+      const company = row.companyName
+        ? companies.find((c) => c.name.toLowerCase() === row.companyName.toLowerCase())
+        : companies[0];
+      if (!company) { errors.push({ row: rowNum, message: `Sede "${row.companyName}" no encontrada` }); continue; }
+      try {
+        const res = await fetch('/api/classes', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: row.name, description: row.description || '',
+            disciplineId: discipline.id, companyId: company.id,
+            capacity: row.capacity ? Number(row.capacity) : null,
+            status: 'ACTIVE', schedules: [], teacherIds: [], levels: [],
+          }),
+        });
+        if (!res.ok) { const b = await res.json().catch(() => ({})); errors.push({ row: rowNum, message: b?.error || 'Error al crear' }); }
+        else success++;
+      } catch { errors.push({ row: rowNum, message: 'Error de conexión' }); }
+    }
+    if (success > 0) await loadClasses();
+    return { success, errors };
+  };
 
   const openCreate = () => {
     setEditingId(null);
@@ -1331,9 +1375,24 @@ const ClassModule: React.FC<Props> = ({ view, setView, currentUser, companyId, o
         isLoading={loading}
         emptyMessage={t('classes.noClasses')}
         onRowClick={(c) => openDetails(c)}
+        toolbarExtras={
+          <Button type="button" variant="outline" onClick={() => setImportOpen(true)}>
+            <Upload className="size-4" />
+            Importar
+          </Button>
+        }
       />
 
       {modalOpen && ClassForm()}
+      {importOpen && (
+        <ImportModal
+          title="Importar Clases"
+          templateFilename="plantilla-clases.xlsx"
+          columns={classImportColumns}
+          onImport={handleClassImport}
+          onClose={() => setImportOpen(false)}
+        />
+      )}
     </>
   );
 };

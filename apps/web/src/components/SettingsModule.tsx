@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
 import UserManagement from './UserManagement';
@@ -659,7 +660,7 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({ view, onSubTitleChange,
             setCompanies(prev => prev.filter(c => c.id !== id));
             window.dispatchEvent(new CustomEvent('companiesUpdated'));
         } catch (err) {
-            alert('Error al eliminar');
+            toast.error('Error al eliminar');
         }
     };
 
@@ -747,7 +748,7 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({ view, onSubTitleChange,
                 setCategories(updated);
                 setCategoryFormOpen(false);
             } else {
-                alert('Error al guardar la Categoría');
+                toast.error('Error al guardar la Categoría');
             }
         } catch (err) {
             console.error(err);
@@ -826,7 +827,7 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({ view, onSubTitleChange,
                 setItemFormOpen(false);
             } else {
                 const err = await res.json().catch(() => ({}));
-                alert(err.error || 'Error al guardar');
+                toast.error(err.error || 'Error al guardar');
             }
         } catch (err) {
             console.error(err);
@@ -994,13 +995,13 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({ view, onSubTitleChange,
                 body: JSON.stringify(orgData)
             });
             if (res.ok) {
-                alert(t('settings.organizationTitle') + ' actualizada con éxito');
+                toast.success(t('settings.organizationTitle') + ' actualizada con éxito');
             } else {
-                alert('Error al guardar Organización');
+                toast.error('Error al guardar Organización');
             }
         } catch (error) {
             console.error(error);
-            alert('Error al guardar Organización');
+            toast.error('Error al guardar Organización');
         }
     };
 
@@ -1016,14 +1017,14 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({ view, onSubTitleChange,
                 })
             });
             if (res.ok) {
-                alert(t('settings.storageTitle') + ' actualizada con éxito');
+                toast.success(t('settings.storageTitle') + ' actualizada con éxito');
             } else {
                 const errorData = await res.json();
-                alert(`Error: ${errorData.details || errorData.error || 'Unknown error'}`);
+                toast.error(`Error: ${errorData.details || errorData.error || 'Unknown error'}`);
             }
         } catch (error: any) {
             console.error(error);
-            alert('Error al guardar Configuración de almacenamiento: ' + error.message);
+            toast.error('Error al guardar Configuración de almacenamiento: ' + error.message);
         }
     };
 
@@ -1227,8 +1228,9 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({ view, onSubTitleChange,
                             <h3 className="text-lg font-semibold text-primary">{t('settings.locAndFormats')}</h3>
                         </div>
 
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                            <div className="space-y-1.5 relative">
+                        <div className="grid grid-cols-12 gap-6">
+                            {/* Fila 1: Formato de Fecha | Formato de Hora | Zona Horaria */}
+                            <div className="space-y-1.5 relative col-span-4">
                                 <label className="block text-sm font-medium text-slate-700">{t('settings.dateFormat')}</label>
                                 <div className="relative">
                                     <select
@@ -1245,7 +1247,7 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({ view, onSubTitleChange,
                                     <i className="fa-solid fa-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-xs"></i>
                                 </div>
                             </div>
-                            <div className="space-y-1.5 relative">
+                            <div className="space-y-1.5 relative col-span-4">
                                 <label className="block text-sm font-medium text-slate-700">{t('settings.timeFormat')}</label>
                                 <div className="relative">
                                     <select
@@ -1260,7 +1262,7 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({ view, onSubTitleChange,
                                     <i className="fa-solid fa-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-xs"></i>
                                 </div>
                             </div>
-                            <div className="space-y-1.5 md:col-span-2 relative" ref={timezoneDropdownRef}>
+                            <div className="space-y-1.5 relative col-span-4" ref={timezoneDropdownRef}>
                                 <label className="block text-sm font-medium text-slate-700">{t('settings.timezone')}</label>
                                 <button
                                     type="button"
@@ -1304,7 +1306,8 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({ view, onSubTitleChange,
                                     </div>
                                 )}
                             </div>
-                            <div className="space-y-1.5 relative">
+                            {/* Fila 2: Moneda Base | Formato de Moneda | Posición de la Moneda */}
+                            <div className="space-y-1.5 relative col-span-4">
                                 <label className="block text-sm font-medium text-slate-700">{t('settings.baseCurrency') || 'Base Currency'}</label>
                                 <div className="relative">
                                     <select
@@ -1324,7 +1327,7 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({ view, onSubTitleChange,
                                     <i className="fa-solid fa-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-xs"></i>
                                 </div>
                             </div>
-                            <div className="space-y-1.5 relative">
+                            <div className="space-y-1.5 relative col-span-4">
                                 <label className="block text-sm font-medium text-slate-700">{t('settings.moneyFormat')}</label>
                                 <div className="relative">
                                     <select
@@ -1339,7 +1342,7 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({ view, onSubTitleChange,
                                     <i className="fa-solid fa-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-xs"></i>
                                 </div>
                             </div>
-                            <div className="space-y-1.5 relative">
+                            <div className="space-y-1.5 relative col-span-4">
                                 <label className="block text-sm font-medium text-slate-700">{t('settings.currencyPosition')}</label>
                                 <div className="relative">
                                     <select
@@ -1353,7 +1356,8 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({ view, onSubTitleChange,
                                     <i className="fa-solid fa-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-xs"></i>
                                 </div>
                             </div>
-                            <div className="space-y-1.5 md:col-span-2 relative">
+                            {/* Fila 3: Idioma (1/4 del ancho) */}
+                            <div className="space-y-1.5 relative col-span-3">
                                 <label className="block text-sm font-medium text-slate-700">{t('settings.defaultLanguage')}</label>
                                 <div className="relative">
                                     <select
