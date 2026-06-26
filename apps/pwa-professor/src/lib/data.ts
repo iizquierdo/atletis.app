@@ -15,7 +15,8 @@ import type {
   ProfessorClass,
   ClassScheduleSlot,
   Discipline,
-  DisciplineLevel
+  DisciplineLevel,
+  StudentObjectiveProgress
 } from "../types";
 
 const splitName = (full?: string | null): { firstName: string; lastName: string } => {
@@ -578,6 +579,31 @@ export const fetchWeeklyAttendance = async (
 
   if (totalRecords === 0) return { rate: null, present: 0, total: 0 };
   return { rate: Math.round((totalPresent / totalRecords) * 100), present: totalPresent, total: totalRecords };
+};
+
+export const fetchStudentObjectives = async (studentId: string): Promise<StudentObjectiveProgress[]> => {
+  try {
+    const { data } = await api.get<Record<string, unknown>[]>(`/students/${studentId}/objectives`);
+    return (Array.isArray(data) ? data : []).map((r) => ({
+      id: String(r.id),
+      levelId: String(r.levelId),
+      title: String(r.title || ""),
+      sortOrder: Number(r.sortOrder ?? 0),
+      progress: Math.min(100, Math.max(0, Number(r.progress ?? 0))),
+      levelName: (r.levelName as string) ?? null,
+      className: (r.className as string) ?? null
+    }));
+  } catch {
+    return [];
+  }
+};
+
+export const updateObjectiveProgress = async (
+  studentId: string,
+  objectiveId: string,
+  progress: number
+): Promise<void> => {
+  await api.put(`/students/${studentId}/objectives/${objectiveId}/progress`, { progress });
 };
 
 export const fetchPublicBranding = async (): Promise<GlobalSettings | null> => {

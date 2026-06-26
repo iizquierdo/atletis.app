@@ -19,7 +19,8 @@ import type {
   StudentNotebookDetail,
   StudentReport,
   StudentClass,
-  StudentSummary
+  StudentSummary,
+  StudentObjectiveProgress
 } from "../types";
 
 const splitName = (full?: string | null): { firstName: string; lastName: string } => {
@@ -509,6 +510,25 @@ export const fetchStudentWeeklyAttendance = async (
     return { rate: Math.round((present / total) * 100), present, total };
   } catch {
     return { rate: null, present: 0, total: 0 };
+  }
+};
+
+export const fetchStudentObjectives = async (
+  studentId: string
+): Promise<StudentObjectiveProgress[]> => {
+  try {
+    const { data } = await api.get<any[]>(`/students/${studentId}/objectives`);
+    return (Array.isArray(data) ? data : []).map((r) => ({
+      id: String(r.id),
+      levelId: String(r.levelId),
+      title: String(r.title || ""),
+      sortOrder: Number(r.sortOrder ?? 0),
+      progress: Math.min(100, Math.max(0, Number(r.progress ?? 0))),
+      levelName: r.levelName ?? null,
+      className: r.className ?? null
+    }));
+  } catch {
+    return [];
   }
 };
 

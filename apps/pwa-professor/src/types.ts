@@ -283,3 +283,13 @@ export interface ProfessorStats {
   weeklyAttendanceRate: number;
   pendingReports: number;
 }
+
+export interface StudentObjectiveProgress {
+  id: string;
+  levelId: string;
+  title: string;
+  sortOrder: number;
+  progress: number;
+  levelName?: string | null;
+  className?: string | null;
+}

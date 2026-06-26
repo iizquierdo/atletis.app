@@ -1,8 +1,9 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ClassLevelCard } from "../components/ClassLevelCard";
 import { MaterialIcon } from "../components/MaterialIcon";
 import { useStudents } from "../context/StudentContext";
-import type { ClassTeacherRef, StudentClass, StudentDiscipline } from "../types";
+import { fetchStudentObjectives } from "../lib/data";
+import type { ClassTeacherRef, StudentClass, StudentDiscipline, StudentObjectiveProgress } from "../types";
 
 
 const isActiveDiscipline = (d: StudentDiscipline) => d.status === "ACTIVE";
@@ -59,6 +60,20 @@ export const NivelesPage = () => {
 
   const athlete = selectedStudent;
 
+  const [objectives, setObjectives] = useState<StudentObjectiveProgress[]>([]);
+  const [objectivesLoading, setObjectivesLoading] = useState(false);
+
+  useEffect(() => {
+    if (!athlete?.id) {
+      setObjectives([]);
+      return;
+    }
+    setObjectivesLoading(true);
+    fetchStudentObjectives(athlete.id)
+      .then(setObjectives)
+      .finally(() => setObjectivesLoading(false));
+  }, [athlete?.id]);
+
   const activeDisciplines = useMemo(
     () => (athlete.disciplines ?? []).filter(isActiveDiscipline),
     [athlete.disciplines]
@@ -77,9 +92,13 @@ export const NivelesPage = () => {
   }, [activeClasses, activeDisciplines, athlete.teachers]);
 
   const primaryCard = levelCards[0] ?? null;
-  const levelOrder = primaryCard?.levelOrder;
-  const levelProgress = primaryCard ? Math.min(95, 55 + (levelOrder ?? 1) * 10) : 40;
   const levelName = primaryCard?.levelName ?? "En Preparación";
+
+  // Progress is the average completion across the objectives of the student's level.
+  const levelProgress = objectives.length
+    ? Math.round(objectives.reduce((sum, o) => sum + o.progress, 0) / objectives.length)
+    : 0;
+  const completedCount = objectives.filter((o) => o.progress >= 100).length;
 
   if (loading && !selectedStudent) {
     return (
@@ -154,118 +173,64 @@ export const NivelesPage = () => {
           </div>
         </div>
 
-        {/* Streak */}
+        {/* Objectives count */}
         <div className="rounded-3xl bg-emerald-50 p-4">
           <p className="text-[10px] font-semibold uppercase tracking-wider text-emerald-500">
-            Racha
+            Objetivos
           </p>
-          <strong className="mt-2 block text-3xl font-bold text-slate-900">15</strong>
-          <p className="mt-1 text-xs text-slate-500">días activos</p>
+          <strong className="mt-2 block text-3xl font-bold text-slate-900">
+            {completedCount}
+            <span className="text-lg text-slate-400">/{objectives.length}</span>
+          </strong>
+          <p className="mt-1 text-xs text-slate-500">completados</p>
         </div>
 
-        {/* Main objective */}
+        {/* Objectives list */}
         <div className="col-span-2 rounded-3xl bg-white p-5 shadow-[0_8px_30px_rgb(0,0,0,0.04)]">
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <MaterialIcon name="timer" className="text-base text-slate-400" />
-              <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                Resistencia 200m
+          <h3 className="mb-4 text-sm font-bold text-slate-700">Objetivos del nivel</h3>
+          {objectivesLoading ? (
+            <div className="flex items-center justify-center py-6">
+              <div className="h-3 w-3 animate-pulse rounded-full bg-[var(--primary)]" />
+            </div>
+          ) : objectives.length === 0 ? (
+            <div className="flex flex-col items-center gap-2 py-6 text-center">
+              <MaterialIcon name="flag" className="text-3xl text-slate-200" />
+              <p className="text-xs text-slate-400">
+                Aún no hay objetivos cargados para el nivel del alumno.
               </p>
             </div>
-            <span className="shrink-0 rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-bold text-emerald-600">
-              LOGRADO
-            </span>
-          </div>
-          <p className="mt-2 text-sm text-slate-600">
-            Completado en 4:15 min · Mejor marca personal
-          </p>
-          <div className="mt-4 h-2 overflow-hidden rounded-full bg-slate-100">
-            <div
-              className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-emerald-500 transition-all duration-700"
-              style={{ width: `${Math.max(levelProgress, 82)}%` }}
-            />
-          </div>
-          <div className="mt-1 flex justify-between">
-            <span className="text-[10px] text-slate-400">Progreso</span>
-            <span className="text-[10px] font-semibold text-slate-600">
-              {Math.max(levelProgress, 82)}%
-            </span>
-          </div>
-        </div>
-
-        {/* Secondary objective */}
-        <div className="col-span-2 rounded-3xl bg-white p-5 shadow-[0_8px_30px_rgb(0,0,0,0.04)]">
-          <div className="flex items-start gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-500">
-              <MaterialIcon name="sports_score" className="text-base" />
+          ) : (
+            <div className="space-y-4">
+              {objectives.map((o) => {
+                const done = o.progress >= 100;
+                return (
+                  <div key={o.id}>
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex min-w-0 items-center gap-2">
+                        <MaterialIcon
+                          name={done ? "check_circle" : "radio_button_unchecked"}
+                          filled={done}
+                          className={`shrink-0 text-base ${done ? "text-emerald-500" : "text-slate-300"}`}
+                        />
+                        <span className={`truncate text-sm font-medium ${done ? "text-slate-400 line-through" : "text-slate-700"}`}>
+                          {o.title}
+                        </span>
+                      </div>
+                      <span className="shrink-0 text-xs font-semibold text-slate-600 tabular-nums">
+                        {o.progress}%
+                      </span>
+                    </div>
+                    <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-100">
+                      <div
+                        className={`h-full rounded-full transition-all duration-700 ${done ? "bg-emerald-500" : "bg-[var(--primary)]"}`}
+                        style={{ width: `${o.progress}%` }}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
             </div>
-            <div className="flex-1 min-w-0">
-              <h4 className="text-sm font-semibold text-slate-900">Viraje de Volteo</h4>
-              <p className="text-xs text-slate-500">Mantener propulsión tras el giro</p>
-            </div>
-          </div>
-          <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-slate-100">
-            <div
-              className="h-full rounded-full bg-blue-400 transition-all duration-700"
-              style={{ width: "40%" }}
-            />
-          </div>
-          <div className="mt-1 flex justify-between">
-            <span className="text-[10px] text-slate-400">Progreso</span>
-            <span className="text-[10px] font-semibold text-slate-600">40%</span>
-          </div>
-        </div>
-
-        {/* Weight */}
-        <div className="rounded-3xl bg-blue-50 p-4">
-          <div className="flex items-center gap-2">
-            <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-blue-100">
-              <MaterialIcon name="scale" className="text-sm text-blue-600" />
-            </span>
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-blue-500">
-              Peso
-            </p>
-          </div>
-          <div className="mt-2 flex items-end gap-1">
-            <strong className="text-3xl font-bold text-slate-900">74.5</strong>
-            <span className="mb-0.5 text-sm text-slate-500">kg</span>
-          </div>
-          <p className="mt-1 text-xs text-slate-500">-0.8kg vs mes anterior</p>
-        </div>
-
-        {/* Body fat */}
-        <div className="rounded-3xl bg-amber-50 p-4">
-          <div className="flex items-center gap-2">
-            <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-amber-100">
-              <MaterialIcon name="monitoring" className="text-sm text-amber-600" />
-            </span>
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-amber-500">
-              Grasa
-            </p>
-          </div>
-          <div className="mt-2 flex items-end gap-1">
-            <strong className="text-3xl font-bold text-slate-900">14.2</strong>
-            <span className="mb-0.5 text-sm text-slate-500">%</span>
-          </div>
-          <p className="mt-1 text-xs text-slate-500">Rango saludable</p>
-        </div>
-
-        {/* Action buttons */}
-        <div className="col-span-2 flex gap-2">
-          <button
-            className="flex flex-1 items-center justify-center gap-2 rounded-full bg-blue-500 py-3.5 text-sm font-semibold text-white shadow-lg shadow-blue-200/60 transition-opacity hover:opacity-90"
-            type="button"
-          >
-            <MaterialIcon name="trending_up" className="text-base" />
-            Buen progreso
-          </button>
-          <button
-            className="flex flex-1 items-center justify-center gap-2 rounded-full bg-emerald-500 py-3.5 text-sm font-semibold text-white shadow-lg shadow-emerald-200/60 transition-opacity hover:opacity-90"
-            type="button"
-          >
-            <MaterialIcon name="task_alt" filled className="text-base" />
-            Objetivo
-          </button>
+          )}
         </div>
 
         {/* Footer */}

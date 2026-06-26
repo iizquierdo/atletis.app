@@ -3,9 +3,9 @@ import { CustomSelect } from "../components/CustomSelect";
 import { MaterialIcon } from "../components/MaterialIcon";
 import { RatingDisplay, RatingPicker } from "../components/RatingPicker";
 import { StudentInfoCard, studentLabel } from "../components/StudentInfoCard";
-import { fetchStudents, fetchStudentDetail, fetchReports, createReport } from "../lib/data";
+import { fetchStudents, fetchStudentDetail, fetchReports, createReport, fetchStudentObjectives, updateObjectiveProgress } from "../lib/data";
 import { extractErrorMessage } from "../lib/api";
-import type { StudentSummary, StudentReport } from "../types";
+import type { StudentSummary, StudentReport, StudentObjectiveProgress } from "../types";
 
 const formatDate = (iso?: string | null) => {
   if (!iso) return "";
@@ -79,6 +79,9 @@ export const CuadernoPage = () => {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [fetchError, setFetchError] = useState<string | null>(null);
+  const [objectives, setObjectives] = useState<StudentObjectiveProgress[]>([]);
+  const [objectivesLoading, setObjectivesLoading] = useState(false);
+  const [savingObjective, setSavingObjective] = useState<string | null>(null);
 
   useEffect(() => {
     const load = async () => {
@@ -125,6 +128,26 @@ export const CuadernoPage = () => {
       .finally(() => setReportsLoading(false));
   }, [selected]);
 
+  useEffect(() => {
+    if (!selected) { setObjectives([]); return; }
+    setObjectivesLoading(true);
+    fetchStudentObjectives(selected.id)
+      .then(setObjectives)
+      .finally(() => setObjectivesLoading(false));
+  }, [selected]);
+
+  const handleObjectiveProgress = async (objectiveId: string, progress: number) => {
+    setObjectives((prev) => prev.map((o) => o.id === objectiveId ? { ...o, progress } : o));
+    setSavingObjective(objectiveId);
+    try {
+      await updateObjectiveProgress(selectedId, objectiveId, progress);
+    } catch {
+      // revert on error is too disruptive; keep optimistic update
+    } finally {
+      setSavingObjective(null);
+    }
+  };
+
   const handleSubmit = async () => {
     if (!selected || !form.title.trim() || !form.content.trim()) return;
     setSubmitting(true);
@@ -152,6 +175,7 @@ export const CuadernoPage = () => {
     setStudentDetail(null);
     setForm(emptyReportForm());
     setSubmitError(null);
+    setObjectives([]);
   };
 
   if (loading) {
@@ -190,6 +214,101 @@ export const CuadernoPage = () => {
       {selected && (
         <>
           <StudentInfoCard student={cardStudent} loading={detailLoading} className="mb-4" />
+
+          {/* Objectives */}
+          <div className="mb-4 rounded-3xl bg-white p-4 shadow-[0_4px_20px_rgb(0,0,0,0.04)]">
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="text-sm font-bold text-slate-700">
+                Objetivos del nivel
+              </h3>
+              {objectives.length > 0 && (
+                <span className="text-[10px] font-semibold text-slate-400">
+                  {objectives.filter((o) => o.progress === 100).length}/{objectives.length} completados
+                </span>
+              )}
+            </div>
+
+            {objectivesLoading ? (
+              <div className="flex items-center justify-center py-6">
+                <div className="h-3 w-3 animate-pulse rounded-full bg-[var(--primary)]" />
+              </div>
+            ) : objectives.length === 0 ? (
+              <div className="flex items-center gap-3 rounded-2xl border border-dashed border-slate-200 px-4 py-4 text-slate-400">
+                <MaterialIcon name="flag" className="text-xl text-slate-300" />
+                <p className="text-xs">Sin objetivos configurados para el nivel del alumno. Se cargan desde la clase, en el nivel correspondiente.</p>
+              </div>
+            ) : (
+                <div className="space-y-3">
+                  {(() => {
+                    const groups = objectives.reduce<Record<string, { className: string; levelName: string; items: StudentObjectiveProgress[] }>>(
+                      (acc, o) => {
+                        const key = o.levelId;
+                        if (!acc[key]) acc[key] = { className: o.className ?? "", levelName: o.levelName ?? "", items: [] };
+                        acc[key].items.push(o);
+                        return acc;
+                      },
+                      {}
+                    );
+                    return Object.entries(groups).map(([levelId, group]) => (
+                      <div key={levelId}>
+                        {Object.keys(groups).length > 1 && (
+                          <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                            {group.className} · {group.levelName}
+                          </p>
+                        )}
+                        <div className="space-y-3">
+                          {group.items.map((obj) => (
+                            <div key={obj.id} className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3">
+                              <div className="flex items-start gap-3">
+                                <button
+                                  type="button"
+                                  onClick={() => handleObjectiveProgress(obj.id, obj.progress === 100 ? 0 : 100)}
+                                  className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 transition-colors ${
+                                    obj.progress === 100
+                                      ? "border-[var(--primary)] bg-[var(--primary)]"
+                                      : "border-slate-300 bg-white"
+                                  }`}
+                                  aria-label={obj.progress === 100 ? "Marcar incompleto" : "Marcar completo"}
+                                >
+                                  {obj.progress === 100 && (
+                                    <MaterialIcon name="check" className="text-[11px] font-bold text-white" />
+                                  )}
+                                </button>
+                                <div className="min-w-0 flex-1">
+                                  <p className={`text-sm font-semibold leading-snug ${obj.progress === 100 ? "text-slate-400 line-through" : "text-slate-800"}`}>
+                                    {obj.title}
+                                  </p>
+                                  <div className="mt-2 flex items-center gap-2">
+                                    <input
+                                      type="range"
+                                      min={0}
+                                      max={100}
+                                      step={5}
+                                      value={obj.progress}
+                                      onChange={(e) => {
+                                        const val = Number(e.target.value);
+                                        setObjectives((prev) => prev.map((o) => o.id === obj.id ? { ...o, progress: val } : o));
+                                      }}
+                                      onMouseUp={(e) => handleObjectiveProgress(obj.id, Number((e.target as HTMLInputElement).value))}
+                                      onTouchEnd={(e) => handleObjectiveProgress(obj.id, Number((e.target as HTMLInputElement).value))}
+                                      disabled={savingObjective === obj.id}
+                                      className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-slate-200 accent-[var(--primary)] disabled:opacity-50"
+                                    />
+                                    <span className={`w-9 shrink-0 text-right text-xs font-bold tabular-nums ${obj.progress === 100 ? "text-[var(--primary)]" : "text-slate-500"}`}>
+                                      {obj.progress}%
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ));
+                  })()}
+                </div>
+              )}
+            </div>
 
           {/* New report form */}
           <div className="mb-4 rounded-3xl bg-white p-4 shadow-[0_8px_30px_rgb(0,0,0,0.08)]">

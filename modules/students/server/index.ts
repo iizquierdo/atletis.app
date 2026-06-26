@@ -974,6 +974,119 @@ export default function registerStudentsModule({ app, pool }: StudentsModuleCont
     }
   });
 
+  // ---- Student objective progress -------------------------------------------
+  const ensureObjectiveProgressTable = async () => {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS "StudentObjectiveProgress" (
+        "id" TEXT NOT NULL,
+        "studentId" TEXT NOT NULL,
+        "objectiveId" TEXT NOT NULL,
+        "progress" INTEGER NOT NULL DEFAULT 0,
+        "updatedById" TEXT,
+        "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT "StudentObjectiveProgress_pkey" PRIMARY KEY ("id"),
+        CONSTRAINT "StudentObjectiveProgress_student_objective_key" UNIQUE ("studentId", "objectiveId")
+      )
+    `);
+    await pool.query('CREATE INDEX IF NOT EXISTS "StudentObjectiveProgress_studentId_idx" ON "StudentObjectiveProgress"("studentId")');
+  };
+
+  // Returns the objectives of the student's enrolled class level(s), joined with
+  // per-student progress. Objectives live as a JSONB array on "ClassLevel"
+  // ([{ id, title, completed }]); the student's level comes from "ClassStudent".
+  router.get('/:id/objectives', async (req, res) => {
+    try {
+      if (!(await ensureActive())) return res.status(409).json({ error: 'Students module is not active.' });
+      const scope = await scopeOf(req);
+      if (!(await canAccessStudent(scope, req.params.id))) return res.status(403).json({ error: 'Student out of scope.' });
+      await ensureObjectiveProgressTable();
+
+      if (!(await tableExists('ClassStudent')) || !(await tableExists('ClassLevel'))) return res.json([]);
+
+      const levels = await pool.query(
+        `SELECT cl.id AS "levelId", cl.name AS "levelName", cl.objectives, c.name AS "className", cl."levelOrder"
+         FROM "ClassStudent" cs
+         JOIN "Class" c ON c.id = cs."classId"
+         JOIN "ClassLevel" cl ON cl.id = cs."levelId"
+         WHERE cs."studentId" = $1 AND cs.status = 'ACTIVE'
+         ORDER BY cl."levelOrder" ASC, cl.name ASC`,
+        [req.params.id]
+      );
+
+      if (!levels.rows.length) return res.json([]);
+
+      // Flatten the JSONB objectives across levels, de-duplicating by objective id.
+      const flat: Array<{ id: string; levelId: string; levelName: string; className: string; title: string; sortOrder: number; defaultCompleted: boolean }> = [];
+      const seen = new Set<string>();
+      for (const lvl of levels.rows as any[]) {
+        const objectives = Array.isArray(lvl.objectives) ? lvl.objectives : [];
+        let order = 0;
+        for (const o of objectives) {
+          const oid = String(o?.id || '').trim();
+          const title = String(o?.title || '').trim();
+          if (!oid || !title || seen.has(oid)) continue;
+          seen.add(oid);
+          flat.push({
+            id: oid,
+            levelId: String(lvl.levelId),
+            levelName: lvl.levelName ?? '',
+            className: lvl.className ?? '',
+            title,
+            sortOrder: order++,
+            defaultCompleted: Boolean(o?.completed)
+          });
+        }
+      }
+
+      if (!flat.length) return res.json([]);
+
+      const progRes = await pool.query(
+        `SELECT "objectiveId", progress FROM "StudentObjectiveProgress" WHERE "studentId" = $1 AND "objectiveId" = ANY($2)`,
+        [req.params.id, flat.map((o) => o.id)]
+      );
+      const progMap = new Map<string, number>(progRes.rows.map((r: any) => [String(r.objectiveId), Number(r.progress)]));
+
+      const rows = flat.map((o) => ({
+        id: o.id,
+        levelId: o.levelId,
+        levelName: o.levelName,
+        className: o.className,
+        title: o.title,
+        sortOrder: o.sortOrder,
+        progress: progMap.has(o.id) ? progMap.get(o.id) : (o.defaultCompleted ? 100 : 0)
+      }));
+
+      res.json(rows);
+    } catch (error: any) {
+      res.status(500).json({ error: 'Failed to fetch student objectives', details: error.message });
+    }
+  });
+
+  router.put('/:id/objectives/:objectiveId/progress', async (req, res) => {
+    try {
+      if (!(await ensureActive())) return res.status(409).json({ error: 'Students module is not active.' });
+      const scope = await scopeOf(req);
+      if (!scope?.isStaff) return res.status(403).json({ error: 'Only staff can update objective progress.' });
+      if (!(await canAccessStudent(scope, req.params.id))) return res.status(403).json({ error: 'Student out of scope.' });
+      await ensureObjectiveProgressTable();
+
+      const { id: studentId, objectiveId } = req.params;
+      const progress = Math.min(100, Math.max(0, Number(req.body?.progress ?? 0)));
+
+      await pool.query(
+        `INSERT INTO "StudentObjectiveProgress" (id, "studentId", "objectiveId", progress, "updatedById", "updatedAt")
+         VALUES ($1, $2, $3, $4, $5, NOW())
+         ON CONFLICT ("studentId", "objectiveId")
+         DO UPDATE SET progress = $4, "updatedById" = $5, "updatedAt" = NOW()`,
+        [crypto.randomUUID(), studentId, objectiveId, progress, scope.userId || null]
+      );
+
+      res.json({ studentId, objectiveId, progress });
+    } catch (error: any) {
+      res.status(500).json({ error: 'Failed to update objective progress', details: error.message });
+    }
+  });
+
   app.use('/api/students', router);
   return { basePath: '/api/students', openapiPath: '/api/students/openapi.json', docsPath: '/api/students/docs' };
 }

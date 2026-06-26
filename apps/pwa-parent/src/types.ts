@@ -92,6 +92,16 @@ export interface StudentSummary {
   teachers?: ClassTeacherRef[];
 }
 
+export interface StudentObjectiveProgress {
+  id: string;
+  levelId: string;
+  title: string;
+  sortOrder: number;
+  progress: number;
+  levelName?: string | null;
+  className?: string | null;
+}
+
 export type CommunityPostStatus = "DRAFT" | "PUBLISHED" | "UNPUBLISHED" | "ARCHIVED";
 
 export interface UserRef {
