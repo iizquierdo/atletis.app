@@ -39,6 +39,8 @@ import {
   putObject,
   getObjectStream,
   findLatestUserAvatarKey,
+  ensureRole,
+  NATACION_ROLES,
   type TenantAuthContext
 } from '@sinapsis/module-sdk-server';
 import {
@@ -611,6 +613,14 @@ const loadCanonicalOutboundMailConfig = async (): Promise<{ provider: string; co
 
 const createSessionToken = () => crypto.randomBytes(48).toString('hex');
 const createResetToken = () => crypto.randomBytes(32).toString('hex');
+const createActivationToken = () => crypto.randomBytes(32).toString('hex');
+
+const buildParentAppUrl = (req: express.Request, pathAndQuery: string) => {
+    const envUrl = String(process.env.VITE_PWA_PARENT_URL || process.env.PWA_PARENT_URL || '').trim();
+    const origin = String(req.headers.origin || '').trim();
+    const base = (envUrl || origin || `${req.protocol}://${req.get('host')}`).replace(/\/+$/, '');
+    return `${base}${pathAndQuery.startsWith('/') ? pathAndQuery : `/${pathAndQuery}`}`;
+};
 
 const parseAccessCompanyIds = (value: any): string[] => {
     if (!value) return [];
@@ -1110,7 +1120,7 @@ app.get('/api/organization/branding', async (req, res) => {
         if (!ctx) return;
         await ensureOrganizationColumns();
         const result = await pool.query(
-            `SELECT "appName","logoUrl","isologoUrl","faviconUrl","primaryColor","secondaryColor","backgroundImageUrl","slogan" FROM "Organization" WHERE id = $1 LIMIT 1`,
+            `SELECT id AS "organizationId","appName","logoUrl","isologoUrl","faviconUrl","primaryColor","secondaryColor","backgroundImageUrl","slogan" FROM "Organization" WHERE id = $1 LIMIT 1`,
             [ctx.organizationId]
         );
         res.json(result.rows[0] || {});
@@ -1155,7 +1165,7 @@ app.put('/api/organization/branding', async (req, res) => {
             [...Object.values(data), ctx.organizationId]
         );
         const result = await pool.query(
-            `SELECT "appName","logoUrl","isologoUrl","faviconUrl","primaryColor","secondaryColor","backgroundImageUrl","slogan" FROM "Organization" WHERE id = $1 LIMIT 1`,
+            `SELECT id AS "organizationId","appName","logoUrl","isologoUrl","faviconUrl","primaryColor","secondaryColor","backgroundImageUrl","slogan" FROM "Organization" WHERE id = $1 LIMIT 1`,
             [ctx.organizationId]
         );
         res.json(result.rows[0] || {});
@@ -2531,13 +2541,24 @@ app.post('/api/auth/login', async (req, res) => {
         }
 
         const result = await pool.query(
-            'SELECT id, email, password FROM "User" WHERE LOWER(email) = $1 LIMIT 1',
+            `SELECT u.id, u.email, u.password, u."emailVerifiedAt",
+                    LOWER(COALESCE(u.role, '')) AS "legacyRole",
+                    LOWER(COALESCE(r.name, '')) AS "roleName"
+             FROM "User" u
+             LEFT JOIN "Role" r ON r.id = u."roleId"
+             WHERE LOWER(u.email) = $1
+             LIMIT 1`,
             [email]
         );
         const dbUser = result.rows[0];
 
         if (!dbUser || String(dbUser.password || '') !== password) {
             return res.status(401).json({ error: 'Invalid credentials.' });
+        }
+
+        const isTutor = String(dbUser.legacyRole || '') === 'tutor' || String(dbUser.roleName || '') === 'tutor';
+        if (isTutor && !dbUser.emailVerifiedAt) {
+            return res.status(403).json({ error: 'Tu cuenta todavia no fue activada. Revisa el email de activacion.' });
         }
 
         const token = createSessionToken();
@@ -2552,6 +2573,162 @@ app.post('/api/auth/login', async (req, res) => {
     } catch (error: any) {
         console.error('Error in POST /api/auth/login:', error);
         res.status(500).json({ error: 'Failed to login', details: error.message });
+    }
+});
+
+app.post('/api/auth/register-parent', async (req, res) => {
+    try {
+        await ensureUserColumns(pool);
+        await pool.query('ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "phone" TEXT');
+        await pool.query('ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "document" TEXT');
+
+        const firstName = String(req.body?.firstName || '').trim();
+        const lastName = String(req.body?.lastName || '').trim();
+        const email = String(req.body?.email || '').trim().toLowerCase();
+        const password = String(req.body?.password || '');
+        const phone = String(req.body?.phone || '').trim() || null;
+        const document = String(req.body?.document || '').trim() || null;
+        const tenantId = String(req.headers['x-tenant-id'] || '').trim();
+
+        if (!firstName || !lastName || !email || !password) {
+            return res.status(400).json({ error: 'Nombre, apellido, email y contrasena son obligatorios.' });
+        }
+        if (!isValidEmail(email)) {
+            return res.status(400).json({ error: 'El email no es valido.' });
+        }
+        if (password.length < 6) {
+            return res.status(400).json({ error: 'La contrasena debe tener al menos 6 caracteres.' });
+        }
+
+        const existing = await pool.query('SELECT id FROM "User" WHERE LOWER(email) = $1 LIMIT 1', [email]);
+        if (existing.rows[0]) {
+            return res.status(409).json({ error: 'Ya existe un usuario con ese email.' });
+        }
+
+        if (!tenantId) {
+            return res.status(400).json({ error: 'No se pudo identificar la organizacion para el registro.' });
+        }
+
+        let companyResult = await pool.query(
+            `SELECT c.id, c."organizationId"
+             FROM "Company" c
+             WHERE c."organizationId" = $1 AND c.status = 'Active'
+             ORDER BY c."createdAt" ASC
+             LIMIT 1`,
+            [tenantId]
+        );
+        let company = companyResult.rows[0];
+        if (!company) {
+            const createdCompanyId = crypto.randomUUID();
+            await pool.query(
+                `INSERT INTO "Company" (id, name, "organizationId", status, "createdAt", "updatedAt")
+                 VALUES ($1, $2, $3, 'Active', NOW(), NOW())`,
+                [createdCompanyId, 'General', tenantId]
+            );
+            companyResult = await pool.query(
+                `SELECT c.id, c."organizationId"
+                 FROM "Company" c
+                 WHERE c.id = $1
+                 LIMIT 1`,
+                [createdCompanyId]
+            );
+            company = companyResult.rows[0];
+        }
+        const companyId = String(company.id);
+
+        const tutorRoleId = await ensureRole(pool, NATACION_ROLES.TUTOR, 'Tutor / responsable de alumno');
+        const id = crypto.randomUUID();
+        const name = `${firstName} ${lastName}`.trim();
+        const activationToken = createActivationToken();
+        const activationExpiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24);
+
+        await pool.query(
+            `INSERT INTO "User" (id, email, name, "firstName", "lastName", password, role, "roleId", "companyId", phone, document, "activationToken", "activationTokenExpiresAt", "createdAt", "updatedAt")
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,NOW(),NOW())`,
+            [
+                id,
+                email,
+                name,
+                firstName,
+                lastName,
+                password,
+                NATACION_ROLES.TUTOR,
+                tutorRoleId,
+                companyId,
+                phone,
+                document,
+                activationToken,
+                activationExpiresAt.toISOString()
+            ]
+        );
+
+        try {
+            const { provider, config: smtpConfig } = await loadCanonicalOutboundMailConfig();
+            const activationUrl = buildParentAppUrl(req, `/activate-account?token=${encodeURIComponent(activationToken)}`);
+            const subject = 'Activa tu cuenta familiar';
+            const textBody = `Hola ${name},\n\nYa creamos tu cuenta familiar. Para activarla, abre este enlace:\n\n${activationUrl}\n\nEste enlace expira en 24 horas.\n\nSi no solicitaste esta cuenta, ignora este mensaje.`;
+            const htmlBody = `<p>Hola ${name},</p><p>Ya creamos tu cuenta familiar.</p><p><a href="${activationUrl}">Activar cuenta</a></p><p>Este enlace expira en 24 horas.</p><p>Si no solicitaste esta cuenta, ignora este mensaje.</p>`;
+            await sendEmailWithConfig(provider, smtpConfig, email, subject, textBody, htmlBody);
+        } catch (mailError) {
+            await pool.query('DELETE FROM "User" WHERE id = $1', [id]);
+            throw mailError;
+        }
+
+        res.status(201).json({
+            success: true,
+            status: 'pending_activation',
+            message: 'Te enviamos un email para activar tu cuenta.'
+        });
+    } catch (error: any) {
+        console.error('Error in POST /api/auth/register-parent:', error);
+        if (String(error?.code) === '23505') return res.status(409).json({ error: 'Ya existe un usuario con ese email.' });
+        res.status(500).json({ error: 'Failed to register parent', details: error.message });
+    }
+});
+
+app.post('/api/auth/activate-parent', async (req, res) => {
+    try {
+        await ensureUserColumns(pool);
+        const token = String(req.body?.token || '').trim();
+        if (!token) {
+            return res.status(400).json({ error: 'token is required.' });
+        }
+
+        const result = await pool.query(
+            `SELECT id, "activationTokenExpiresAt", "emailVerifiedAt"
+             FROM "User"
+             WHERE "activationToken" = $1
+             LIMIT 1`,
+            [token]
+        );
+        const user = result.rows[0];
+        if (!user) {
+            return res.status(400).json({ error: 'El enlace de activacion no es valido.' });
+        }
+        if (user.emailVerifiedAt) {
+            return res.json({ success: true, message: 'La cuenta ya estaba activa.' });
+        }
+
+        const expiresAt = user.activationTokenExpiresAt ? new Date(user.activationTokenExpiresAt) : null;
+        if (!expiresAt || Number.isNaN(expiresAt.getTime()) || expiresAt.getTime() < Date.now()) {
+            return res.status(400).json({ error: 'El enlace de activacion expiro. Solicita un nuevo registro.' });
+        }
+
+        await pool.query(
+            `UPDATE "User"
+             SET "emailVerifiedAt" = NOW(),
+                 "activationToken" = NULL,
+                 "activationTokenExpiresAt" = NULL,
+                 "sessionToken" = NULL,
+                 "updatedAt" = NOW()
+             WHERE id = $1`,
+            [user.id]
+        );
+
+        res.json({ success: true, message: 'Cuenta activada. Ya podes iniciar sesion.' });
+    } catch (error: any) {
+        console.error('Error in POST /api/auth/activate-parent:', error);
+        res.status(500).json({ error: 'Failed to activate parent account', details: error.message });
     }
 });
 

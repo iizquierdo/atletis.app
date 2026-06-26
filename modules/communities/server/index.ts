@@ -66,7 +66,11 @@ export default function registerCommunitiesModule({ app, pool }: CommunitiesModu
   /** Community visibility: admins by company scope; professors/tutors only when invited. */
   const scopedCommunityClause = (scope: RequesterScope | null, params: any[]): string => {
     if (!scope) return 'false';
-    if (scope.isSuperAdmin) return 'true';
+    if (scope.isSuperAdmin) {
+      if (!scope.organizationId) return 'true'; // platform-level admin with no tenant: unrestricted
+      params.push(scope.organizationId);
+      return `cm."companyId" IN (SELECT id FROM "Company" WHERE "organizationId" = $${params.length})`;
+    }
     if (scope.isTutor && !scope.isStaff && scope.userId) {
       return `(${professorMembershipClause(scope.userId, params)} OR ${tutorStudentCommunityClause(scope.userId, params)})`;
     }
@@ -87,7 +91,18 @@ export default function registerCommunitiesModule({ app, pool }: CommunitiesModu
   const canAccess = async (scope: RequesterScope | null, communityId: string): Promise<boolean> => {
     if (!scope) return false;
     if (scope.isSuperAdmin) {
-      const r = await pool.query('SELECT 1 FROM "Community" WHERE id = $1 LIMIT 1', [communityId]);
+      if (!scope.organizationId) {
+        const r = await pool.query('SELECT 1 FROM "Community" WHERE id = $1 LIMIT 1', [communityId]);
+        return Boolean(r.rows[0]);
+      }
+      const r = await pool.query(
+        `SELECT 1
+         FROM "Community" cm
+         JOIN "Company" c ON c.id = cm."companyId"
+         WHERE cm.id = $1 AND c."organizationId" = $2
+         LIMIT 1`,
+        [communityId, scope.organizationId]
+      );
       return Boolean(r.rows[0]);
     }
     if (scope.isTutor && !scope.isStaff && scope.userId) {
@@ -240,6 +255,10 @@ export default function registerCommunitiesModule({ app, pool }: CommunitiesModu
       const companyId = String(req.body?.companyId || '').trim() || scope?.primaryCompanyId || '';
       if (!name) return res.status(400).json({ error: 'name is required.' });
       if (!companyId) return res.status(400).json({ error: 'companyId (sede) is required.' });
+      if (scope?.isSuperAdmin && scope.organizationId) {
+        const company = await pool.query('SELECT 1 FROM "Company" WHERE id = $1 AND "organizationId" = $2 LIMIT 1', [companyId, scope.organizationId]);
+        if (!company.rows[0]) return res.status(403).json({ error: 'Company out of scope.' });
+      }
       if (scope?.isAdminSede && !scope.companyScope.includes(companyId)) return res.status(403).json({ error: 'Company out of scope.' });
 
       const id = crypto.randomUUID();

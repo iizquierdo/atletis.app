@@ -28,7 +28,7 @@ interface Props {
 }
 
 interface MetaItem { id: string; name: string }
-interface StaffItem { id: string; name: string; email?: string; roleName?: string }
+interface StaffItem { id: string; name: string; email?: string; roleName?: string; companyId?: string | null; companyName?: string | null }
 interface LevelItem { id: string; disciplineId: string; name: string }
 interface DisciplineItem { id: string; name: string; levels: LevelItem[] }
 interface CompanyItem { id: string; name: string }
@@ -44,7 +44,8 @@ interface ClassRow {
 
 interface ScheduleForm { dayOfWeek: number; startTime: string; endTime: string; location: string }
 interface LevelForm { id?: string; name: string; levelOrder: number }
-interface AvailableStudent { id: string; code: string; firstName: string; lastName: string }
+interface LevelObjective { id: string; title: string; completed: boolean }
+interface AvailableStudent { id: string; code: string; firstName: string; lastName: string; companyName?: string | null }
 interface ClassCommunityRow { id: string; name: string; description?: string | null; imageUrl?: string | null; active: boolean; memberCount: number }
 
 interface ResourceItem {
@@ -138,7 +139,7 @@ const ClassModule: React.FC<Props> = ({ view, setView, currentUser, companyId, o
   const [attendanceToggling, setAttendanceToggling] = useState<Set<string>>(new Set());
 
   // Level ABM (details → Levels tab)
-  const emptyLevelForm = { id: '', name: '', description: '', color: '#6366f1', levelOrder: 0, active: true, imageUrl: '' };
+  const emptyLevelForm = { id: '', name: '', description: '', color: '#6366f1', levelOrder: 0, active: true, imageUrl: '', objectives: [] as LevelObjective[] };
   const [levelModalOpen, setLevelModalOpen] = useState(false);
   const [levelForm, setLevelForm] = useState({ ...emptyLevelForm });
   const [levelSaving, setLevelSaving] = useState(false);
@@ -396,11 +397,50 @@ const ClassModule: React.FC<Props> = ({ view, setView, currentUser, companyId, o
     setLevelModalOpen(true);
   };
 
+  const normalizeLevelObjectives = (objectives: any[]): LevelObjective[] =>
+    (Array.isArray(objectives) ? objectives : [])
+      .map((objective) => ({
+        id: String(objective?.id || crypto.randomUUID()),
+        title: String(objective?.title || '').trim(),
+        completed: Boolean(objective?.completed),
+      }))
+      .filter((objective) => objective.title);
+
   const openLevelEdit = (l: any) => {
-    setLevelForm({ id: l.id, name: l.name || '', description: l.description || '', color: l.color || '#6366f1', levelOrder: l.levelOrder ?? 0, active: l.active !== false, imageUrl: l.imageUrl || '' });
+    setLevelForm({
+      id: l.id,
+      name: l.name || '',
+      description: l.description || '',
+      color: l.color || '#6366f1',
+      levelOrder: l.levelOrder ?? 0,
+      active: l.active !== false,
+      imageUrl: l.imageUrl || '',
+      objectives: normalizeLevelObjectives(l.objectives || []),
+    });
     setLevelImageFile(null);
     setLevelImagePreview(l.imageUrl || '');
     setLevelModalOpen(true);
+  };
+
+  const addLevelObjective = () => {
+    setLevelForm((prev) => ({
+      ...prev,
+      objectives: [...prev.objectives, { id: crypto.randomUUID(), title: '', completed: false }],
+    }));
+  };
+
+  const updateLevelObjective = (id: string, patch: Partial<LevelObjective>) => {
+    setLevelForm((prev) => ({
+      ...prev,
+      objectives: prev.objectives.map((objective) => (objective.id === id ? { ...objective, ...patch } : objective)),
+    }));
+  };
+
+  const removeLevelObjective = (id: string) => {
+    setLevelForm((prev) => ({
+      ...prev,
+      objectives: prev.objectives.filter((objective) => objective.id !== id),
+    }));
   };
 
   const submitLevel = async () => {
@@ -412,7 +452,14 @@ const ClassModule: React.FC<Props> = ({ view, setView, currentUser, companyId, o
       const res = await fetch(url, {
         method: isEdit ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: levelForm.name, description: levelForm.description || null, color: levelForm.color || null, levelOrder: levelForm.levelOrder, active: levelForm.active })
+        body: JSON.stringify({
+          name: levelForm.name,
+          description: levelForm.description || null,
+          color: levelForm.color || null,
+          levelOrder: levelForm.levelOrder,
+          active: levelForm.active,
+          objectives: levelForm.objectives.filter((objective) => objective.title.trim()).map((objective) => ({ ...objective, title: objective.title.trim() })),
+        })
       });
       if (!res.ok) { const b = await res.json().catch(() => ({})); throw new Error(b?.error || t('classes.errorSave')); }
       const saved = await res.json();
@@ -757,6 +804,9 @@ const ClassModule: React.FC<Props> = ({ view, setView, currentUser, companyId, o
                               {l.active !== false ? t('classes.active') : t('classes.inactive')}
                             </span>
                             <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-500">#{l.levelOrder}</span>
+                            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-500">
+                              {(Array.isArray(l.objectives) ? l.objectives.length : 0)} objetivos
+                            </span>
                           </div>
                           {l.description && <p className="mt-0.5 text-xs text-slate-500 line-clamp-2">{l.description}</p>}
                         </div>
@@ -778,14 +828,15 @@ const ClassModule: React.FC<Props> = ({ view, setView, currentUser, companyId, o
               {/* Level modal */}
               {levelModalOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-                  <div className="w-full max-w-md rounded-2xl bg-white shadow-xl">
+                  <div className="w-full max-w-5xl rounded-2xl bg-white shadow-xl">
                     <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
                       <h2 className="text-base font-bold text-slate-800">
                         {levelForm.id ? t('classes.editLevel', { defaultValue: 'Editar nivel' }) : t('classes.addLevel', { defaultValue: 'Agregar nivel' })}
                       </h2>
                       <button type="button" onClick={() => setLevelModalOpen(false)} className="rounded-lg p-1 text-slate-400 hover:bg-slate-100"><X className="size-4" /></button>
                     </div>
-                    <div className="space-y-4 px-6 py-5">
+                    <div className="grid max-h-[72vh] gap-6 overflow-y-auto px-6 py-5 lg:grid-cols-[minmax(0,1.1fr)_minmax(20rem,0.9fr)]">
+                      <div className="space-y-4">
                       {/* Nombre */}
                       <div>
                         <label className="mb-1 block text-xs font-semibold text-slate-600">{t('classes.levelName', { defaultValue: 'Nombre' })} *</label>
@@ -833,14 +884,58 @@ const ClassModule: React.FC<Props> = ({ view, setView, currentUser, companyId, o
                           </label>
                         </div>
                       </div>
-                      {/* Estado */}
-                      <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
-                        <span className="text-sm font-medium text-slate-700">{t('classes.active')}</span>
-                        <button type="button"
-                          onClick={() => setLevelForm({ ...levelForm, active: !levelForm.active })}
-                          className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${levelForm.active ? 'bg-primary' : 'bg-slate-200'}`}>
-                          <span className={`inline-block size-5 transform rounded-full bg-white shadow transition-transform ${levelForm.active ? 'translate-x-5' : 'translate-x-0'}`} />
-                        </button>
+                        {/* Estado */}
+                        <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                          <span className="text-sm font-medium text-slate-700">{t('classes.active')}</span>
+                          <button type="button"
+                            onClick={() => setLevelForm({ ...levelForm, active: !levelForm.active })}
+                            className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${levelForm.active ? 'bg-primary' : 'bg-slate-200'}`}>
+                            <span className={`inline-block size-5 transform rounded-full bg-white shadow transition-transform ${levelForm.active ? 'translate-x-5' : 'translate-x-0'}`} />
+                          </button>
+                        </div>
+                      </div>
+                      <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                        <div className="mb-3 flex items-start justify-between gap-3">
+                          <div>
+                            <h3 className="text-sm font-bold text-slate-800">Objetivos del nivel</h3>
+                            <p className="mt-0.5 text-xs text-slate-400">El alumno debe superar estos objetivos para completar el nivel.</p>
+                          </div>
+                          <button type="button" onClick={addLevelObjective} className="shrink-0 rounded-lg bg-white px-3 py-2 text-xs font-bold text-red-500 shadow-sm ring-1 ring-slate-200 hover:bg-red-50">
+                            <i className="fa-solid fa-plus mr-1 text-[10px]" />Agregar
+                          </button>
+                        </div>
+                        <div className="space-y-2">
+                          {levelForm.objectives.length === 0 && (
+                            <p className="rounded-lg border border-dashed border-slate-200 bg-white px-3 py-6 text-center text-xs text-slate-400">
+                              Sin objetivos cargados.
+                            </p>
+                          )}
+                          {levelForm.objectives.map((objective, index) => (
+                            <div key={objective.id} className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white p-2">
+                              <input
+                                type="checkbox"
+                                checked={objective.completed}
+                                onChange={(e) => updateLevelObjective(objective.id, { completed: e.target.checked })}
+                                className="size-4 shrink-0 accent-red-500"
+                                aria-label={`Objetivo ${index + 1} superado`}
+                              />
+                              <input
+                                className="min-w-0 flex-1 rounded-md border border-transparent bg-transparent px-2 py-1.5 text-sm text-slate-700 outline-none placeholder:text-slate-300 focus:border-slate-200 focus:bg-white"
+                                value={objective.title}
+                                onChange={(e) => updateLevelObjective(objective.id, { title: e.target.value })}
+                                placeholder={`Objetivo ${index + 1}`}
+                              />
+                              <button
+                                type="button"
+                                onClick={() => removeLevelObjective(objective.id)}
+                                className="flex size-8 shrink-0 items-center justify-center rounded-md text-slate-300 hover:bg-red-50 hover:text-red-500"
+                                aria-label="Eliminar objetivo"
+                              >
+                                <Trash2 className="size-3.5" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     </div>
                     <div className="flex justify-end gap-2 border-t border-slate-100 px-6 py-4">
@@ -991,7 +1086,11 @@ const ClassModule: React.FC<Props> = ({ view, setView, currentUser, companyId, o
                   <label className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-slate-400">{t('classes.assignStudent')}</label>
                   <select className={inputClass} value={enrollStudentId} onChange={(e) => setEnrollStudentId(e.target.value)}>
                     <option value="">—</option>
-                    {available.map((s) => <option key={s.id} value={s.id}>{s.lastName}, {s.firstName} ({s.code})</option>)}
+                    {available.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.lastName}, {s.firstName} ({s.code}){s.companyName ? ` - ${s.companyName}` : ''}
+                      </option>
+                    ))}
                   </select>
                 </div>
                 {enrollLevelOptions.length > 0 && (
@@ -1486,7 +1585,11 @@ const MultiSelect: React.FC<{ label: string; options: StaffItem[]; selected: str
                       onClick={() => onToggle(o.id)}
                       className={cn('flex w-full items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-left text-sm hover:bg-slate-50', checked && 'bg-red-50/60')}
                     >
-                      <span className="text-slate-700">{o.name}{o.roleName ? <span className="text-slate-400"> · {o.roleName}</span> : null}</span>
+                      <span className="text-slate-700">
+                        {o.name}
+                        {o.roleName ? <span className="text-slate-400"> · {o.roleName}</span> : null}
+                        {o.companyName ? <span className="text-slate-400"> · {o.companyName}</span> : null}
+                      </span>
                       {checked && <Check className="size-4 shrink-0 text-red-500" />}
                     </button>
                   );

@@ -47,6 +47,7 @@ interface ParentRow {
   document?: string | null;
   companyId: string;
   companyName?: string | null;
+  emailVerifiedAt?: string | null;
   imageUrl?: string | null;
   children?: ChildSummary[];
 }
@@ -65,7 +66,7 @@ interface ChildDetail {
 const inputClass =
   'w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 outline-none focus:border-red-400 focus:ring-2 focus:ring-red-100';
 
-const emptyForm = { firstName: '', lastName: '', email: '', phone: '', companyId: '', password: '' };
+const emptyForm = { firstName: '', lastName: '', email: '', phone: '', companyId: '', password: '', active: true };
 
 const ParentsModule: React.FC<Props> = ({ view, setView, companyId, onSubTitleChange, recordId }) => {
   const { t } = useTranslation();
@@ -178,7 +179,7 @@ const ParentsModule: React.FC<Props> = ({ view, setView, companyId, onSubTitleCh
     setEditingId(p.id);
     setForm({
       firstName: p.firstName || '', lastName: p.lastName || '', email: p.email || '',
-      phone: p.phone || '', companyId: p.companyId || '', password: ''
+      phone: p.phone || '', companyId: p.companyId || '', password: '', active: Boolean(p.emailVerifiedAt)
     });
     setError('');
     setModalOpen(true);
@@ -192,6 +193,7 @@ const ParentsModule: React.FC<Props> = ({ view, setView, companyId, onSubTitleCh
     try {
       const payload: Record<string, unknown> = { ...form };
       if (editingId && !form.password) delete payload.password;
+      if (!editingId) delete payload.active;
       const res = await fetch(editingId ? `/api/parents/${editingId}` : '/api/parents', {
         method: editingId ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -304,6 +306,21 @@ const ParentsModule: React.FC<Props> = ({ view, setView, companyId, onSubTitleCh
         cell: ({ row }) => <span className="text-sm text-muted-foreground">{row.original.companyName || '—'}</span>
       },
       {
+        id: 'active',
+        accessorFn: (row) => (row.emailVerifiedAt ? 'Activa' : 'Pendiente'),
+        header: ({ column }) => <DataGridColumnHeader column={column} title="Cuenta" />,
+        cell: ({ row }) => (
+          <span
+            className={cn(
+              'rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase',
+              row.original.emailVerifiedAt ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'
+            )}
+          >
+            {row.original.emailVerifiedAt ? 'Activa' : 'Pendiente'}
+          </span>
+        )
+      },
+      {
         id: 'actions',
         enableSorting: false,
         meta: { headerClassName: 'text-end', cellClassName: 'text-end' },
@@ -376,6 +393,35 @@ const ParentsModule: React.FC<Props> = ({ view, setView, companyId, onSubTitleCh
             </div>
           </Field>
         )}
+        {editingId && (
+          <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Cuenta activa</p>
+                <p className="mt-1 text-xs text-slate-500">
+                  Permite que el padre inicie sesion sin esperar el enlace de activacion por email.
+                </p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={form.active}
+                onClick={() => setForm({ ...form, active: !form.active })}
+                className={cn(
+                  'relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-red-200',
+                  form.active ? 'bg-red-500' : 'bg-slate-300'
+                )}
+              >
+                <span
+                  className={cn(
+                    'inline-block h-5 w-5 rounded-full bg-white shadow transition-transform',
+                    form.active ? 'translate-x-5' : 'translate-x-0.5'
+                  )}
+                />
+              </button>
+            </div>
+          </div>
+        )}
         <ModalActions onCancel={() => setModalOpen(false)} cancel={t('parents.cancel')} save={t('parents.save')} />
       </form>
     </Modal>
@@ -430,6 +476,7 @@ const ParentsModule: React.FC<Props> = ({ view, setView, companyId, onSubTitleCh
               <InfoItem label={t('parents.phone')} value={selected.phone || '—'} />
               <InfoItem label={t('parents.document')} value={selected.document || '—'} />
               <InfoItem label={t('parents.sede')} value={selected.companyName || '—'} />
+              <InfoItem label="Cuenta" value={selected.emailVerifiedAt ? 'Activa' : 'Pendiente'} />
             </div>
           )}
 

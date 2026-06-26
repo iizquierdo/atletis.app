@@ -23,6 +23,7 @@ const CalendarModule = lazy(() => import('./components/CalendarModule'));
 const FAQModule = lazy(() => import('./components/FAQModule'));
 const InvoiceModule = lazy(() => import('./components/InvoiceModule'));
 const SettingsModule = lazy(() => import('./components/SettingsModule'));
+const InstallAppsPage = lazy(() => import('./components/InstallAppsPage'));
 import { ViewType, Customer, AppUser } from '@sinapsis/shared-types';
 import { CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area, XAxis, YAxis } from 'recharts';
 import { getBusinessAdvice } from './services/geminiService';
@@ -682,6 +683,14 @@ const App: React.FC = () => {
       <BrowserRouter basename={import.meta.env.BASE_URL}>
         <Routes>
           <Route path="/admin/*" element={<AdminApp />} />
+          <Route
+            path="/install/:organizationId"
+            element={
+              <Suspense fallback={<ViewSuspenseFallback />}>
+                <InstallAppsPage />
+              </Suspense>
+            }
+          />
           <Route
             path="*"
             element={

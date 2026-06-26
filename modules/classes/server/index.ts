@@ -56,6 +56,7 @@ export default function registerClassesModule({ app, pool }: ClassesModuleContex
   const ensureLevelColumns = async () => {
     if (levelColumnsEnsured) return;
     await pool.query('ALTER TABLE "ClassLevel" ADD COLUMN IF NOT EXISTS "imageUrl" TEXT');
+    await pool.query(`ALTER TABLE "ClassLevel" ADD COLUMN IF NOT EXISTS "objectives" JSONB NOT NULL DEFAULT '[]'::jsonb`);
     levelColumnsEnsured = true;
   };
 
@@ -108,7 +109,11 @@ export default function registerClassesModule({ app, pool }: ClassesModuleContex
   /** SQL WHERE fragment (+params) limiting classes (alias cl) to those the requester may see. */
   const scopedClassClause = (scope: RequesterScope | null, params: any[]): string => {
     if (!scope) return 'false';
-    if (scope.isSuperAdmin) return 'true';
+    if (scope.isSuperAdmin) {
+      if (!scope.organizationId) return 'true'; // platform-level admin with no company: unrestricted
+      params.push(scope.organizationId);
+      return `cl."companyId" IN (SELECT id FROM "Company" WHERE "organizationId" = $${params.length})`;
+    }
     if (scope.isAdminSede) {
       if (!scope.companyScope.length) return 'false';
       params.push(scope.companyScope);
@@ -146,6 +151,48 @@ export default function registerClassesModule({ app, pool }: ClassesModuleContex
     }
     const r = await pool.query(`SELECT 1 FROM "Class" cl WHERE cl.id = $1 AND ${clause} LIMIT 1`, params);
     return Boolean(r.rows[0]);
+  };
+
+  const canUseDiscipline = async (scope: RequesterScope | null, disciplineId: string): Promise<boolean> => {
+    if (!scope) return false;
+    if (!(await tableExists('Discipline'))) return true;
+    if (scope.isSuperAdmin && !scope.organizationId) {
+      const r = await pool.query('SELECT 1 FROM "Discipline" WHERE id = $1 LIMIT 1', [disciplineId]);
+      return Boolean(r.rows[0]);
+    }
+    if (!scope.organizationId) return false;
+    const r = await pool.query(
+      `SELECT 1
+       FROM "Discipline" d
+       WHERE d.id = $1 AND (
+         EXISTS (
+           SELECT 1
+           FROM "User" du
+           JOIN "Company" dc ON dc.id = du."companyId"
+           WHERE du.id IN (d."createdById", d."updatedById") AND dc."organizationId" = $2
+         )
+         OR EXISTS (
+           SELECT 1
+           FROM "Class" cl
+           JOIN "Company" cc ON cc.id = cl."companyId"
+           WHERE cl."disciplineId" = d.id AND cc."organizationId" = $2
+         )
+       )
+       LIMIT 1`,
+      [disciplineId, scope.organizationId]
+    );
+    return Boolean(r.rows[0]);
+  };
+
+  const normalizeLevelObjectives = (raw: unknown) => {
+    if (!Array.isArray(raw)) return [];
+    return raw
+      .map((item: any) => ({
+        id: String(item?.id || crypto.randomUUID()).trim(),
+        title: String(item?.title || '').trim().slice(0, 300),
+        completed: Boolean(item?.completed)
+      }))
+      .filter((item) => item.title);
   };
 
   /** Returns the next class code; lazily ensures the Reference template exists. */
@@ -302,21 +349,72 @@ export default function registerClassesModule({ app, pool }: ClassesModuleContex
       if (!(await ensureActive())) return res.status(409).json({ error: 'Classes module is not active.' });
       const uid = requesterId(req);
       const ctx = uid ? await resolveTenantAuthContext(pool, uid) : null;
+      const scope = uid ? await resolveRequesterScope(pool, uid) : null;
       const organizationId = ctx?.organizationId || '';
 
       const catMap = await fetchMergedItemsByCategoryCodes(pool, { codes: META_CODES, organizationId, companyIdContext: null, activeOnly: true });
 
-      // Staff available as teachers (whole org).
+      // Staff available as teachers within the current tenant/company scope.
+      const staffParams: any[] = [];
+      const staffWhere: string[] = [];
+      if (scope?.isSuperAdmin && scope.organizationId) {
+        staffParams.push(scope.organizationId);
+        staffWhere.push(`c."organizationId" = $${staffParams.length}`);
+      } else if (scope?.isAdminSede) {
+        if (!scope.companyScope.length) {
+          staffWhere.push('false');
+        } else {
+          staffParams.push(scope.companyScope);
+          staffWhere.push(`u."companyId" = ANY($${staffParams.length})`);
+        }
+      } else if (scope?.primaryCompanyId) {
+        staffParams.push(scope.primaryCompanyId);
+        staffWhere.push(`u."companyId" = $${staffParams.length}`);
+      } else if (!scope) {
+        staffWhere.push('false');
+      }
       const staff = await pool.query(
-        `SELECT u.id, u.name, u.email, COALESCE(r.name, u.role) AS "roleName", u."companyId"
-         FROM "User" u LEFT JOIN "Role" r ON r.id = u."roleId"
-         ORDER BY u.name ASC`
+        `SELECT u.id, u.name, u.email, COALESCE(r.name, u.role) AS "roleName", u."companyId", c.name AS "companyName"
+         FROM "User" u
+         LEFT JOIN "Role" r ON r.id = u."roleId"
+         LEFT JOIN "Company" c ON c.id = u."companyId"
+         ${staffWhere.length ? `WHERE ${staffWhere.join(' AND ')}` : ''}
+         ORDER BY u.name ASC`,
+        staffParams
       );
 
       // Disciplines (+levels) only if that module is installed.
       let disciplines: any[] = [];
       if (await tableExists('Discipline')) {
-        const d = await pool.query('SELECT id, name FROM "Discipline" WHERE active = true ORDER BY name ASC');
+        const disciplineParams: any[] = [];
+        const disciplineWhere: string[] = ['d.active = true'];
+        if (scope?.organizationId) {
+          disciplineParams.push(scope.organizationId);
+          const orgParam = `$${disciplineParams.length}`;
+          disciplineWhere.push(`(
+            EXISTS (
+              SELECT 1
+              FROM "User" du
+              JOIN "Company" dc ON dc.id = du."companyId"
+              WHERE du.id IN (d."createdById", d."updatedById") AND dc."organizationId" = ${orgParam}
+            )
+            OR EXISTS (
+              SELECT 1
+              FROM "Class" cl
+              JOIN "Company" cc ON cc.id = cl."companyId"
+              WHERE cl."disciplineId" = d.id AND cc."organizationId" = ${orgParam}
+            )
+          )`);
+        } else if (!scope) {
+          disciplineWhere.push('false');
+        }
+        const d = await pool.query(
+          `SELECT d.id, d.name
+           FROM "Discipline" d
+           WHERE ${disciplineWhere.join(' AND ')}
+           ORDER BY d.name ASC`,
+          disciplineParams
+        );
         const levels = (await tableExists('DisciplineLevel'))
           ? (await pool.query('SELECT id, "disciplineId", name, "levelOrder" FROM "DisciplineLevel" WHERE active = true ORDER BY "levelOrder" ASC')).rows
           : [];
@@ -391,12 +489,13 @@ export default function registerClassesModule({ app, pool }: ClassesModuleContex
       if (!name) return res.status(400).json({ error: 'name is required.' });
       if (!disciplineId) return res.status(400).json({ error: 'disciplineId is required.' });
       if (!companyId) return res.status(400).json({ error: 'companyId (sede) is required.' });
+      if (scope.isSuperAdmin && scope.organizationId) {
+        const company = await pool.query('SELECT 1 FROM "Company" WHERE id = $1 AND "organizationId" = $2 LIMIT 1', [companyId, scope.organizationId]);
+        if (!company.rows[0]) return res.status(403).json({ error: 'Company out of scope.' });
+      }
       if (scope.isAdminSede && !scope.companyScope.includes(companyId)) return res.status(403).json({ error: 'Company out of scope.' });
 
-      if (await tableExists('Discipline')) {
-        const d = await pool.query('SELECT 1 FROM "Discipline" WHERE id = $1 LIMIT 1', [disciplineId]);
-        if (!d.rows[0]) return res.status(400).json({ error: 'Discipline not found.' });
-      }
+      if (!(await canUseDiscipline(scope, disciplineId))) return res.status(400).json({ error: 'Discipline not found.' });
 
       const id = crypto.randomUUID();
       const code = await nextClassCode(companyId);
@@ -436,10 +535,21 @@ export default function registerClassesModule({ app, pool }: ClassesModuleContex
         levelOrder = Number(max.rows[0]?.m ?? -1) + 1;
       }
       const id = crypto.randomUUID();
+      const objectives = normalizeLevelObjectives(req.body?.objectives);
       await pool.query(
-        `INSERT INTO "ClassLevel" (id, "classId", name, description, "levelOrder", color, active, "imageUrl", "createdAt", "updatedAt")
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NOW(),NOW())`,
-        [id, req.params.id, name, String(req.body?.description || '').trim() || null, levelOrder, String(req.body?.color || '').trim() || null, req.body?.active === false ? false : true, String(req.body?.imageUrl || '').trim() || null]
+        `INSERT INTO "ClassLevel" (id, "classId", name, description, "levelOrder", color, active, "imageUrl", objectives, "createdAt", "updatedAt")
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,NOW(),NOW())`,
+        [
+          id,
+          req.params.id,
+          name,
+          String(req.body?.description || '').trim() || null,
+          levelOrder,
+          String(req.body?.color || '').trim() || null,
+          req.body?.active === false ? false : true,
+          String(req.body?.imageUrl || '').trim() || null,
+          JSON.stringify(objectives)
+        ]
       );
       const created = await pool.query('SELECT * FROM "ClassLevel" WHERE id = $1', [id]);
       res.status(201).json(created.rows[0]);
@@ -461,7 +571,7 @@ export default function registerClassesModule({ app, pool }: ClassesModuleContex
       if (!(await canAccessClass(scope, req.params.id))) return res.status(404).json({ error: 'Class not found' });
 
       await pool.query(
-        `UPDATE "ClassLevel" SET name=$1, description=$2, "levelOrder"=$3, color=$4, active=$5, "imageUrl"=$6, "updatedAt"=NOW() WHERE id=$7`,
+        `UPDATE "ClassLevel" SET name=$1, description=$2, "levelOrder"=$3, color=$4, active=$5, "imageUrl"=$6, objectives=$7, "updatedAt"=NOW() WHERE id=$8`,
         [
           String(req.body?.name ?? level.name).trim() || level.name,
           req.body?.description !== undefined ? (String(req.body.description).trim() || null) : level.description,
@@ -469,6 +579,7 @@ export default function registerClassesModule({ app, pool }: ClassesModuleContex
           req.body?.color !== undefined ? (String(req.body.color).trim() || null) : level.color,
           req.body?.active !== undefined ? Boolean(req.body.active) : level.active,
           req.body?.imageUrl !== undefined ? (String(req.body.imageUrl).trim() || null) : level.imageUrl,
+          req.body?.objectives !== undefined ? JSON.stringify(normalizeLevelObjectives(req.body.objectives)) : JSON.stringify(level.objectives || []),
           req.params.levelId
         ]
       );
@@ -733,7 +844,7 @@ export default function registerClassesModule({ app, pool }: ClassesModuleContex
     }
   });
 
-  // Active students of the class's sede that are not enrolled in this class yet.
+  // Active students of the class's tenant that are not enrolled in this class yet.
   router.get('/:id/available-students', async (req, res) => {
     try {
       if (!(await ensureActive())) return res.status(409).json({ error: 'Classes module is not active.' });
@@ -741,24 +852,31 @@ export default function registerClassesModule({ app, pool }: ClassesModuleContex
       if (!(await canAccessClass(scope, req.params.id))) return res.status(404).json({ error: 'Class not found' });
       if (!(await tableExists('Student'))) return res.json([]);
 
-      const klass = await pool.query('SELECT "companyId" FROM "Class" WHERE id = $1 LIMIT 1', [req.params.id]);
-      const companyId = klass.rows[0]?.companyId;
-      if (!companyId) return res.status(404).json({ error: 'Class not found' });
+      const klass = await pool.query(
+        `SELECT cl."companyId", c."organizationId"
+         FROM "Class" cl
+         JOIN "Company" c ON c.id = cl."companyId"
+         WHERE cl.id = $1 LIMIT 1`,
+        [req.params.id]
+      );
+      const organizationId = klass.rows[0]?.organizationId;
+      if (!organizationId) return res.status(404).json({ error: 'Class not found' });
 
       const search = String(req.query.search || '').trim();
-      const params: any[] = [companyId, req.params.id];
+      const params: any[] = [organizationId, req.params.id];
       let searchClause = '';
       if (search) {
         params.push(`%${search}%`);
         searchClause = `AND (LOWER(s."firstName" || ' ' || s."lastName") LIKE LOWER($${params.length}) OR LOWER(s.code) LIKE LOWER($${params.length}))`;
       }
       const result = await pool.query(
-        `SELECT s.id, s.code, s."firstName", s."lastName", s.status
+        `SELECT s.id, s.code, s."firstName", s."lastName", s.status, s."companyId", c.name AS "companyName"
          FROM "Student" s
-         WHERE s."companyId" = $1 AND s.status = 'ACTIVE'
+         JOIN "Company" c ON c.id = s."companyId"
+         WHERE c."organizationId" = $1 AND s.status = 'ACTIVE'
            AND NOT EXISTS (SELECT 1 FROM "ClassStudent" cs WHERE cs."classId" = $2 AND cs."studentId" = s.id)
            ${searchClause}
-         ORDER BY s."lastName" ASC, s."firstName" ASC`,
+         ORDER BY c.name ASC, s."lastName" ASC, s."firstName" ASC`,
         params
       );
       res.json(result.rows);
@@ -777,15 +895,27 @@ export default function registerClassesModule({ app, pool }: ClassesModuleContex
       const studentId = String(req.body?.studentId || '').trim();
       if (!studentId) return res.status(400).json({ error: 'studentId is required.' });
 
-      const klass = await pool.query('SELECT "companyId", capacity FROM "Class" WHERE id = $1 LIMIT 1', [req.params.id]);
+      const klass = await pool.query(
+        `SELECT cl."companyId", cl.capacity, c."organizationId"
+         FROM "Class" cl
+         JOIN "Company" c ON c.id = cl."companyId"
+         WHERE cl.id = $1 LIMIT 1`,
+        [req.params.id]
+      );
       const klassRow = klass.rows[0];
       if (!klassRow) return res.status(404).json({ error: 'Class not found' });
 
-      // Student must belong to the class's sede (decoupled validation).
+      // Student must belong to the class's tenant (decoupled validation).
       if (await tableExists('Student')) {
-        const s = await pool.query('SELECT "companyId" FROM "Student" WHERE id = $1 LIMIT 1', [studentId]);
+        const s = await pool.query(
+          `SELECT s."companyId", c."organizationId"
+           FROM "Student" s
+           JOIN "Company" c ON c.id = s."companyId"
+           WHERE s.id = $1 LIMIT 1`,
+          [studentId]
+        );
         if (!s.rows[0]) return res.status(400).json({ error: 'Student not found.' });
-        if (s.rows[0].companyId !== klassRow.companyId) return res.status(400).json({ error: 'Student belongs to another sede.' });
+        if (s.rows[0].organizationId !== klassRow.organizationId) return res.status(400).json({ error: 'Student belongs to another tenant.' });
       }
 
       if (klassRow.capacity != null) {
@@ -1028,14 +1158,15 @@ export default function registerClassesModule({ app, pool }: ClassesModuleContex
       let disciplineId = existing.disciplineId;
       if (req.body?.disciplineId !== undefined && String(req.body.disciplineId).trim() && String(req.body.disciplineId).trim() !== existing.disciplineId) {
         disciplineId = String(req.body.disciplineId).trim();
-        if (await tableExists('Discipline')) {
-          const d = await pool.query('SELECT 1 FROM "Discipline" WHERE id = $1 LIMIT 1', [disciplineId]);
-          if (!d.rows[0]) return res.status(400).json({ error: 'Discipline not found.' });
-        }
+        if (!(await canUseDiscipline(scope, disciplineId))) return res.status(400).json({ error: 'Discipline not found.' });
       }
       let companyId = existing.companyId;
       if (req.body?.companyId !== undefined && String(req.body.companyId).trim() && String(req.body.companyId).trim() !== existing.companyId) {
         companyId = String(req.body.companyId).trim();
+        if (scope.isSuperAdmin && scope.organizationId) {
+          const company = await pool.query('SELECT 1 FROM "Company" WHERE id = $1 AND "organizationId" = $2 LIMIT 1', [companyId, scope.organizationId]);
+          if (!company.rows[0]) return res.status(403).json({ error: 'Company out of scope.' });
+        }
         if (scope.isAdminSede && !scope.companyScope.includes(companyId)) return res.status(403).json({ error: 'Company out of scope.' });
       }
       const capacity =

@@ -2,33 +2,8 @@ import { useMemo } from "react";
 import { ClassLevelCard } from "../components/ClassLevelCard";
 import { MaterialIcon } from "../components/MaterialIcon";
 import { useStudents } from "../context/StudentContext";
-import type { ClassTeacherRef, StudentClass, StudentDiscipline, StudentSummary } from "../types";
+import type { ClassTeacherRef, StudentClass, StudentDiscipline } from "../types";
 
-const fallbackStudent: StudentSummary = {
-  id: "demo-mateo",
-  firstName: "Mateo",
-  lastName: "Valenzuela",
-  status: "ACTIVE",
-  sede: { id: "demo-sede", name: "Sucursal Central" },
-  disciplines: [
-    {
-      id: "demo-natacion",
-      status: "ACTIVE",
-      discipline: {
-        id: "nat",
-        name: "Natación Infantil",
-        active: true
-      },
-      level: {
-        id: "lv-nat-4",
-        active: true,
-        levelOrder: 4,
-        name: "Intermedio",
-        description: "Dominio completo de crol y espalda. Iniciación en técnica de braza."
-      }
-    }
-  ]
-};
 
 const isActiveDiscipline = (d: StudentDiscipline) => d.status === "ACTIVE";
 
@@ -82,8 +57,7 @@ const mapDisciplineToCard = (
 export const NivelesPage = () => {
   const { selectedStudent, students, loading, error } = useStudents();
 
-  const hasRealData = students.length > 0;
-  const athlete = selectedStudent ?? fallbackStudent;
+  const athlete = selectedStudent;
 
   const activeDisciplines = useMemo(
     () => (athlete.disciplines ?? []).filter(isActiveDiscipline),
@@ -115,14 +89,20 @@ export const NivelesPage = () => {
     );
   }
 
+  if (!athlete) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-3 px-4 py-20 text-center">
+        <MaterialIcon name="group_add" className="text-4xl text-slate-300" />
+        <h3 className="font-semibold text-slate-700">Aun no tenes atletas activos</h3>
+        <p className="text-sm text-slate-400">
+          Cuando se vincule un atleta a tu cuenta, sus niveles apareceran aca.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="px-4 pb-6 pt-5">
-      {!hasRealData && (
-        <div className="mb-4 flex items-center gap-2 rounded-2xl bg-blue-50 px-4 py-3 text-sm text-blue-700">
-          <MaterialIcon name="science" className="text-base" />
-          <span>Vista demo — aún no hay atletas asignados.</span>
-        </div>
-      )}
       {error && (
         <div className="mb-4 flex items-center gap-2 rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-600">
           <MaterialIcon name="warning" className="text-base" />

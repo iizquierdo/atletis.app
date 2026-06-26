@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS "ClassLevel" (
     "levelOrder" INTEGER NOT NULL DEFAULT 0,
     "color" TEXT,
     "active" BOOLEAN NOT NULL DEFAULT true,
+    "objectives" JSONB NOT NULL DEFAULT '[]'::jsonb,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
     CONSTRAINT "ClassLevel_pkey" PRIMARY KEY ("id")

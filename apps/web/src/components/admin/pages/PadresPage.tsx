@@ -31,6 +31,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input, inputVariants } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Switch, SwitchWrapper } from '@/components/ui/switch';
 import { cn } from '@/lib/utils';
 
 interface ParentRow {
@@ -45,6 +46,7 @@ interface ParentRow {
   companyName: string | null;
   organizationId: string;
   organizationName: string | null;
+  emailVerifiedAt: string | null;
   createdAt: string;
 }
 
@@ -63,6 +65,7 @@ interface FormState {
   document: string;
   companyId: string;
   password: string;
+  active: boolean;
 }
 
 const emptyForm = (): FormState => ({
@@ -72,7 +75,8 @@ const emptyForm = (): FormState => ({
   phone: '',
   document: '',
   companyId: '',
-  password: ''
+  password: '',
+  active: true
 });
 
 const PadresPage: React.FC = () => {
@@ -156,7 +160,8 @@ const PadresPage: React.FC = () => {
       phone: row.phone || '',
       document: row.document || '',
       companyId: row.companyId || '',
-      password: ''
+      password: '',
+      active: Boolean(row.emailVerifiedAt)
     });
     setModalOpen(true);
     setStatus(null);
@@ -194,6 +199,7 @@ const PadresPage: React.FC = () => {
       document: form.document.trim() || null,
       companyId: form.companyId
     };
+    if (editingId) payload.active = form.active;
     if (form.password) payload.password = form.password;
 
     setSaving(true);
@@ -269,6 +275,21 @@ const PadresPage: React.FC = () => {
         accessorFn: (row) => row.organizationName || '',
         header: ({ column }) => <DataGridColumnHeader column={column} title="Organización" />,
         cell: ({ row }) => <span className="text-sm font-medium">{row.original.organizationName || '—'}</span>
+      },
+      {
+        id: 'active',
+        accessorFn: (row) => (row.emailVerifiedAt ? 'Activa' : 'Pendiente'),
+        header: ({ column }) => <DataGridColumnHeader column={column} title="Cuenta" />,
+        cell: ({ row }) => (
+          <span
+            className={cn(
+              'inline-flex rounded-full px-2.5 py-1 text-xs font-semibold',
+              row.original.emailVerifiedAt ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
+            )}
+          >
+            {row.original.emailVerifiedAt ? 'Activa' : 'Pendiente'}
+          </span>
+        )
       },
       {
         id: 'actions',
@@ -458,6 +479,28 @@ const PadresPage: React.FC = () => {
                     onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
                   />
                 </div>
+                {editingId && (
+                  <div className="md:col-span-2 rounded-lg border border-border bg-muted/30 p-4">
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="space-y-1">
+                        <Label htmlFor="p-active" className="text-sm font-semibold">
+                          Cuenta activa
+                        </Label>
+                        <p className="text-xs text-muted-foreground">
+                          Al activar la cuenta, el padre puede iniciar sesion sin usar el enlace de email.
+                        </p>
+                      </div>
+                      <SwitchWrapper>
+                        <Switch
+                          id="p-active"
+                          checked={form.active}
+                          onCheckedChange={(checked) => setForm((f) => ({ ...f, active: checked }))}
+                          disabled={saving}
+                        />
+                      </SwitchWrapper>
+                    </div>
+                  </div>
+                )}
               </div>
             </form>
           </DialogBody>

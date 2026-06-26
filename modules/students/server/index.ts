@@ -156,7 +156,7 @@ export default function registerStudentsModule({ app, pool }: StudentsModuleCont
              JOIN "Class" cl ON cl.id = cs."classId"
              ${hasDiscipline ? 'LEFT JOIN "Discipline" d ON d.id = cl."disciplineId"' : ''}
              LEFT JOIN "ClassLevel" lvl ON lvl.id = cs."levelId"
-             WHERE cs."studentId" = $1 AND cs.status = 'ACTIVE' AND cl.status = 'ACTIVE'
+             WHERE cs."studentId" = $1
              ORDER BY cl.name ASC`,
             [id]
           )

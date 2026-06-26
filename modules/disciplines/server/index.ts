@@ -45,6 +45,72 @@ export default function registerDisciplinesModule({ app, pool }: DisciplinesModu
     return String(mod.rows[0]?.status || '') === 'Active';
   };
 
+  const tableExists = async (name: string) => {
+    const r = await pool.query('SELECT to_regclass($1) AS t', [`public."${name}"`]);
+    return Boolean(r.rows[0]?.t);
+  };
+
+  let disciplineTenantColumnsEnsured = false;
+  const ensureDisciplineTenantColumns = async () => {
+    if (disciplineTenantColumnsEnsured) return;
+    await pool.query('ALTER TABLE "Discipline" ADD COLUMN IF NOT EXISTS "organizationId" TEXT');
+    await pool.query(`
+      UPDATE "Discipline" d
+      SET "organizationId" = c."organizationId"
+      FROM "User" u
+      JOIN "Company" c ON c.id = u."companyId"
+      WHERE d."organizationId" IS NULL
+        AND u.id = d."createdById"
+        AND c."organizationId" IS NOT NULL
+    `);
+    await pool.query('DROP INDEX IF EXISTS "Discipline_name_key"');
+    await pool.query('CREATE UNIQUE INDEX IF NOT EXISTS "Discipline_organization_name_key" ON "Discipline"(COALESCE("organizationId", \'\'), LOWER(name))');
+    disciplineTenantColumnsEnsured = true;
+  };
+
+  const scopedDisciplineClause = (scope: RequesterScope | null, params: any[], hasClasses: boolean): string => {
+    if (!scope) return 'false';
+    if (scope.isSuperAdmin && !scope.organizationId) return 'true';
+    if (!scope.organizationId) return 'false';
+
+    params.push(scope.organizationId);
+    const orgParam = `$${params.length}`;
+    const classScope = hasClasses
+      ? `OR EXISTS (
+          SELECT 1
+          FROM "Class" cl
+          JOIN "Company" cc ON cc.id = cl."companyId"
+          WHERE cl."disciplineId" = d.id AND cc."organizationId" = ${orgParam}
+        )`
+      : '';
+
+    return `(
+      d."organizationId" = ${orgParam}
+      OR
+      EXISTS (
+        SELECT 1
+        FROM "User" du
+        JOIN "Company" dc ON dc.id = du."companyId"
+        WHERE du.id IN (d."createdById", d."updatedById")
+          AND dc."organizationId" = ${orgParam}
+      )
+      ${classScope}
+    )`;
+  };
+
+  const canAccessDiscipline = async (scope: RequesterScope | null, disciplineId: string): Promise<boolean> => {
+    await ensureDisciplineTenantColumns();
+    const params: any[] = [disciplineId];
+    const clause = scopedDisciplineClause(scope, params, await tableExists('Class'));
+    if (clause === 'false') return false;
+    if (clause === 'true') {
+      const r = await pool.query('SELECT 1 FROM "Discipline" d WHERE d.id = $1 LIMIT 1', [disciplineId]);
+      return Boolean(r.rows[0]);
+    }
+    const r = await pool.query(`SELECT 1 FROM "Discipline" d WHERE d.id = $1 AND ${clause} LIMIT 1`, params);
+    return Boolean(r.rows[0]);
+  };
+
   // Idempotent schema guard: the migration adds "coverUrl" on fresh installs,
   // but already-installed dev DBs need it applied on boot too.
   void pool
@@ -141,19 +207,24 @@ export default function registerDisciplinesModule({ app, pool }: DisciplinesModu
   router.get('/resources', async (req, res) => {
     try {
       if (!(await ensureActive())) return res.status(409).json({ error: 'Disciplines module is not active.' });
+      await ensureDisciplineTenantColumns();
       const uid = requesterId(req);
       const ctx = uid ? await resolveTenantAuthContext(pool, uid) : null;
       const scope = ctx ? await resolveRequesterScope(pool, uid) : null;
       const visibilities = allowedVisibilities(scope);
+      const params: any[] = [...visibilities];
       const placeholders = visibilities.map((_, i) => `$${i + 1}`).join(', ');
+      const disciplineScope = scopedDisciplineClause(scope, params, await tableExists('Class'));
+      if (disciplineScope === 'false') return res.json([]);
       const result = await pool.query(
         `SELECT r.*, d.name AS "disciplineName", d."imageUrl" AS "disciplineImageUrl", u.name AS "createdByName"
          FROM "DisciplineResource" r
          JOIN "Discipline" d ON d.id = r."disciplineId"
          LEFT JOIN "User" u ON u.id = r."createdById"
          WHERE r.active = true AND r.visibility IN (${placeholders})
+           ${disciplineScope === 'true' ? '' : `AND ${disciplineScope}`}
          ORDER BY d.name ASC, r.title ASC`,
-        visibilities
+        params
       );
       res.json(result.rows);
     } catch (error: any) {
@@ -165,11 +236,17 @@ export default function registerDisciplinesModule({ app, pool }: DisciplinesModu
   router.get('/', async (req, res) => {
     try {
       if (!(await ensureActive())) return res.status(409).json({ error: 'Disciplines module is not active.' });
+      await ensureDisciplineTenantColumns();
+      const scope = await resolveRequesterScope(pool, requesterId(req));
+      const hasClasses = await tableExists('Class');
       const search = String(req.query.search || '').trim();
       const active = String(req.query.active || '').trim();
 
       const where: string[] = [];
       const params: any[] = [];
+      const disciplineScope = scopedDisciplineClause(scope, params, hasClasses);
+      if (disciplineScope === 'false') return res.json([]);
+      if (disciplineScope !== 'true') where.push(disciplineScope);
       if (search) {
         params.push(`%${search}%`);
         where.push(`(LOWER(d.name) LIKE LOWER($${params.length}) OR LOWER(COALESCE(d.description, '')) LIKE LOWER($${params.length}))`);
@@ -184,8 +261,13 @@ export default function registerDisciplinesModule({ app, pool }: DisciplinesModu
           SELECT d.*,
                  (SELECT COUNT(*)::int FROM "DisciplineLevel" l WHERE l."disciplineId" = d.id) AS "levelCount",
                  (SELECT COUNT(*)::int FROM "DisciplineResource" r WHERE r."disciplineId" = d.id AND r.active = true) AS "resourceCount",
-                 (SELECT COUNT(*)::int FROM "Class" c WHERE c."disciplineId" = d.id AND c.status = 'ACTIVE') AS "classCount",
-                 (SELECT COUNT(*)::int FROM "ClassStudent" cs JOIN "Class" c ON c.id = cs."classId" WHERE c."disciplineId" = d.id AND cs.status = 'ACTIVE') AS "studentCount"
+                 ${hasClasses && scope?.organizationId
+                   ? `(SELECT COUNT(*)::int FROM "Class" c JOIN "Company" cc ON cc.id = c."companyId" WHERE c."disciplineId" = d.id AND c.status = 'ACTIVE' AND cc."organizationId" = $1) AS "classCount",
+                      (SELECT COUNT(*)::int FROM "ClassStudent" cs JOIN "Class" c ON c.id = cs."classId" JOIN "Company" cc ON cc.id = c."companyId" WHERE c."disciplineId" = d.id AND cs.status = 'ACTIVE' AND cc."organizationId" = $1) AS "studentCount"`
+                   : hasClasses
+                     ? `(SELECT COUNT(*)::int FROM "Class" c WHERE c."disciplineId" = d.id AND c.status = 'ACTIVE') AS "classCount",
+                        (SELECT COUNT(*)::int FROM "ClassStudent" cs JOIN "Class" c ON c.id = cs."classId" WHERE c."disciplineId" = d.id AND cs.status = 'ACTIVE') AS "studentCount"`
+                     : `0::int AS "classCount", 0::int AS "studentCount"`}
           FROM "Discipline" d
           ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
           ORDER BY d.name ASC
@@ -201,18 +283,24 @@ export default function registerDisciplinesModule({ app, pool }: DisciplinesModu
   router.post('/', async (req, res) => {
     try {
       if (!(await ensureActive())) return res.status(409).json({ error: 'Disciplines module is not active.' });
+      await ensureDisciplineTenantColumns();
       const name = String(req.body?.name || '').trim();
       const userId = requesterId(req) || String(req.body?.createdById || '').trim();
       if (!name) return res.status(400).json({ error: 'name is required.' });
       if (!userId) return res.status(400).json({ error: 'requester user is required.' });
+      const scope = await resolveRequesterScope(pool, userId);
+      const organizationId = scope?.organizationId || null;
 
-      const dup = await pool.query('SELECT id FROM "Discipline" WHERE LOWER(name) = LOWER($1) LIMIT 1', [name]);
+      const dup = await pool.query(
+        'SELECT id FROM "Discipline" WHERE LOWER(name) = LOWER($1) AND COALESCE("organizationId", \'\') = COALESCE($2, \'\') LIMIT 1',
+        [name, organizationId]
+      );
       if (dup.rows[0]) return res.status(409).json({ error: 'A discipline with that name already exists.' });
 
       const id = crypto.randomUUID();
       await pool.query(
-        `INSERT INTO "Discipline" (id, name, description, "imageUrl", "coverUrl", active, "createdById", "updatedById", "createdAt", "updatedAt")
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $7, NOW(), NOW())`,
+        `INSERT INTO "Discipline" (id, name, description, "imageUrl", "coverUrl", active, "organizationId", "createdById", "updatedById", "createdAt", "updatedAt")
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8, NOW(), NOW())`,
         [
           id,
           name,
@@ -220,11 +308,13 @@ export default function registerDisciplinesModule({ app, pool }: DisciplinesModu
           String(req.body?.imageUrl || '').trim() || null,
           String(req.body?.coverUrl || '').trim() || null,
           req.body?.active === false ? false : true,
+          organizationId,
           userId
         ]
       );
       res.status(201).json(await getDisciplineById(id));
     } catch (error: any) {
+      if (String(error?.code) === '23505') return res.status(409).json({ error: 'A discipline with that name already exists.' });
       res.status(500).json({ error: 'Failed to create discipline', details: error.message });
     }
   });
@@ -357,9 +447,8 @@ export default function registerDisciplinesModule({ app, pool }: DisciplinesModu
   router.get('/:id/resources', async (req, res) => {
     try {
       if (!(await ensureActive())) return res.status(409).json({ error: 'Disciplines module is not active.' });
-      if (!(await disciplineExists(req.params.id))) return res.status(404).json({ error: 'Discipline not found' });
-
       const scope = await resolveRequesterScope(pool, requesterId(req));
+      if (!(await canAccessDiscipline(scope, req.params.id))) return res.status(404).json({ error: 'Discipline not found' });
       const visibilities = allowedVisibilities(scope);
       const result = await pool.query(
         `
@@ -547,6 +636,8 @@ export default function registerDisciplinesModule({ app, pool }: DisciplinesModu
   router.get('/:id', async (req, res) => {
     try {
       if (!(await ensureActive())) return res.status(409).json({ error: 'Disciplines module is not active.' });
+      const scope = await resolveRequesterScope(pool, requesterId(req));
+      if (!(await canAccessDiscipline(scope, req.params.id))) return res.status(404).json({ error: 'Discipline not found' });
       const discipline = await getDisciplineById(req.params.id);
       if (!discipline) return res.status(404).json({ error: 'Discipline not found' });
       const levels = await pool.query('SELECT * FROM "DisciplineLevel" WHERE "disciplineId" = $1 ORDER BY "levelOrder" ASC, name ASC', [req.params.id]);
@@ -560,30 +651,39 @@ export default function registerDisciplinesModule({ app, pool }: DisciplinesModu
   router.put('/:id', async (req, res) => {
     try {
       if (!(await ensureActive())) return res.status(409).json({ error: 'Disciplines module is not active.' });
+      await ensureDisciplineTenantColumns();
+      const scope = await resolveRequesterScope(pool, requesterId(req));
+      if (!(await canAccessDiscipline(scope, req.params.id))) return res.status(404).json({ error: 'Discipline not found' });
       const existing = await getDisciplineById(req.params.id);
       if (!existing) return res.status(404).json({ error: 'Discipline not found' });
       const userId = requesterId(req) || existing.updatedById;
       const name = String(req.body?.name ?? existing.name).trim() || existing.name;
+      const organizationId = existing.organizationId || scope?.organizationId || null;
 
       if (name.toLowerCase() !== String(existing.name).toLowerCase()) {
-        const dup = await pool.query('SELECT id FROM "Discipline" WHERE LOWER(name) = LOWER($1) AND id <> $2 LIMIT 1', [name, req.params.id]);
+        const dup = await pool.query(
+          'SELECT id FROM "Discipline" WHERE LOWER(name) = LOWER($1) AND COALESCE("organizationId", \'\') = COALESCE($2, \'\') AND id <> $3 LIMIT 1',
+          [name, organizationId, req.params.id]
+        );
         if (dup.rows[0]) return res.status(409).json({ error: 'A discipline with that name already exists.' });
       }
 
       await pool.query(
-        `UPDATE "Discipline" SET name = $1, description = $2, "imageUrl" = $3, "coverUrl" = $4, active = $5, "updatedById" = $6, "updatedAt" = NOW() WHERE id = $7`,
+        `UPDATE "Discipline" SET name = $1, description = $2, "imageUrl" = $3, "coverUrl" = $4, active = $5, "organizationId" = COALESCE("organizationId", $6), "updatedById" = $7, "updatedAt" = NOW() WHERE id = $8`,
         [
           name,
           req.body?.description !== undefined ? (String(req.body.description).trim() || null) : existing.description,
           req.body?.imageUrl !== undefined ? (String(req.body.imageUrl).trim() || null) : existing.imageUrl,
           req.body?.coverUrl !== undefined ? (String(req.body.coverUrl).trim() || null) : existing.coverUrl,
           req.body?.active !== undefined ? Boolean(req.body.active) : existing.active,
+          organizationId,
           userId,
           req.params.id
         ]
       );
       res.json(await getDisciplineById(req.params.id));
     } catch (error: any) {
+      if (String(error?.code) === '23505') return res.status(409).json({ error: 'A discipline with that name already exists.' });
       res.status(500).json({ error: 'Failed to update discipline', details: error.message });
     }
   });

@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS "Discipline" (
     "name" TEXT NOT NULL,
     "description" TEXT,
     "imageUrl" TEXT,
+    "organizationId" TEXT,
     "active" BOOLEAN NOT NULL DEFAULT true,
     "createdById" TEXT NOT NULL,
     "updatedById" TEXT NOT NULL,
@@ -14,7 +15,7 @@ CREATE TABLE IF NOT EXISTS "Discipline" (
     CONSTRAINT "Discipline_pkey" PRIMARY KEY ("id")
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS "Discipline_name_key" ON "Discipline"("name");
+CREATE UNIQUE INDEX IF NOT EXISTS "Discipline_organization_name_key" ON "Discipline"(COALESCE("organizationId", ''), LOWER(name));
 CREATE INDEX IF NOT EXISTS "Discipline_active_idx" ON "Discipline"("active");
 
 CREATE TABLE IF NOT EXISTS "DisciplineLevel" (

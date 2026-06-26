@@ -36,11 +36,12 @@ export const extractErrorMessage = (error: unknown) => {
     const responseData = error.response?.data as
       | {
           message?: string;
+          error?: string;
           errors?: Array<{ path?: Array<string | number>; message?: string }>;
         }
       | undefined;
 
-    const baseMessage = responseData?.message ?? error.message;
+    const baseMessage = responseData?.message ?? responseData?.error ?? error.message;
     const firstIssue = responseData?.errors?.[0];
 
     if (firstIssue?.message) {

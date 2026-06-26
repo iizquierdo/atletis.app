@@ -8,7 +8,7 @@ import {
   getSortedRowModel,
   useReactTable
 } from '@tanstack/react-table';
-import { Building2, Eye, IdCard, Mail, Pencil, Power, PowerOff, Trash2, Upload } from 'lucide-react';
+import { Building2, CalendarDays, Eye, GraduationCap, IdCard, Mail, Pencil, Power, PowerOff, Trash2, Upload, Users } from 'lucide-react';
 import { Button } from '@webapp/components/ui/button';
 import { DataGridColumnHeader } from '@webapp/components/ui/data-grid-column-header';
 import { cn } from '@webapp/lib/utils';
@@ -185,7 +185,7 @@ const StudentModule: React.FC<Props> = ({ view, setView, currentUser, companyId,
   const [importOpen, setImportOpen] = useState(false);
 
   const [selected, setSelected] = useState<any>(null);
-  const [activeTab, setActiveTab] = useState<'Overview' | 'Disciplines' | 'Staff' | 'Reports' | 'Conversations' | 'Communities'>('Overview');
+  const [activeTab, setActiveTab] = useState<'Overview' | 'Classes' | 'Staff' | 'Reports' | 'Conversations' | 'Communities'>('Overview');
 
   const [communities, setCommunities] = useState<{ id: string; name: string; imageUrl?: string | null; companyName?: string; disciplineName?: string | null; memberCount?: number; postCount?: number; active?: boolean }[]>([]);
   const [communitiesLoading, setCommunitiesLoading] = useState(false);
@@ -208,10 +208,6 @@ const StudentModule: React.FC<Props> = ({ view, setView, currentUser, companyId,
   const [convForm, setConvForm] = useState({ subject: '', firstMessage: '' });
   const [openConv, setOpenConv] = useState<{ id: string; subject?: string | null; messages: MessageItem[] } | null>(null);
   const [draft, setDraft] = useState('');
-
-  // ABM disciplinas (en el tab)
-  const [discModalOpen, setDiscModalOpen] = useState(false);
-  const [discForm, setDiscForm] = useState({ disciplineId: '', levelId: '', status: 'ACTIVE', editing: false });
 
   // ABM padres (tutores vinculados al alumno)
   const [parentsList, setParentsList] = useState<ParentItem[]>([]);
@@ -334,6 +330,7 @@ const StudentModule: React.FC<Props> = ({ view, setView, currentUser, companyId,
             email: row.email || '', phone: row.phone || '', document: row.document || '',
             birthDate: row.birthDate || '', gender: row.gender || '',
             status: 'ACTIVE',
+            companyId: companyId || companies[0]?.id || '',
           }),
         });
         if (!res.ok) {
@@ -474,38 +471,6 @@ const StudentModule: React.FC<Props> = ({ view, setView, currentUser, companyId,
     if (!openConv || !draft.trim()) return;
     const res = await fetch(`/api/students/conversations/${openConv.id}/messages`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ body: draft.trim() }) });
     if (res.ok) { const msg = await res.json(); setOpenConv({ ...openConv, messages: [...openConv.messages, msg] }); setDraft(''); }
-  };
-
-  // ---- ABM disciplinas (tab) ------------------------------------------------
-  const openAddDiscipline = () => { setError(''); setDiscForm({ disciplineId: '', levelId: '', status: 'ACTIVE', editing: false }); setDiscModalOpen(true); };
-  const openEditDiscipline = (d: Enrollment) => { setError(''); setDiscForm({ disciplineId: d.disciplineId, levelId: d.levelId || '', status: d.status || 'ACTIVE', editing: true }); setDiscModalOpen(true); };
-
-  const submitDiscipline = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selected || !discForm.disciplineId) return;
-    try {
-      const url = discForm.editing
-        ? `/api/students/${selected.id}/disciplines/${discForm.disciplineId}`
-        : `/api/students/${selected.id}/disciplines`;
-      const res = await fetch(url, {
-        method: discForm.editing ? 'PUT' : 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ disciplineId: discForm.disciplineId, levelId: discForm.levelId, status: discForm.status })
-      });
-      if (!res.ok) { const b = await res.json().catch(() => ({})); throw new Error(b?.error || t('students.errorSave')); }
-      setSelected(await res.json());
-      setDiscModalOpen(false);
-    } catch (err: any) { setError(err.message || t('students.errorSave')); }
-  };
-
-  const removeDiscipline = async (d: Enrollment) => {
-    if (!selected) return;
-    if (!window.confirm(t('students.removeDisciplineConfirm', { name: disciplineName(d.disciplineId) }))) return;
-    try {
-      const res = await fetch(`/api/students/${selected.id}/disciplines/${d.disciplineId}`, { method: 'DELETE' });
-      if (!res.ok) { const b = await res.json().catch(() => ({})); throw new Error(b?.error || t('students.errorSave')); }
-      setSelected(await res.json());
-    } catch (err: any) { setError(err.message || t('students.errorSave')); }
   };
 
   // ---- ABM padres (tab) -----------------------------------------------------
@@ -684,7 +649,6 @@ const StudentModule: React.FC<Props> = ({ view, setView, currentUser, companyId,
   if (view === 'details') {
     const linkedTutorIds = new Set((selected?.tutors || []).map((x: Assignment) => x.tutorId));
     const availableParents = parentsList.filter((p) => !linkedTutorIds.has(p.id));
-    const discLevels = meta.disciplines.find((d) => d.id === discForm.disciplineId)?.levels || [];
     return (
       <div className="space-y-6 animate-in fade-in duration-300 pb-10">
         {error && <div className="rounded-xl bg-red-50 px-4 py-3 text-sm font-medium text-red-600">{error}</div>}
@@ -710,7 +674,7 @@ const StudentModule: React.FC<Props> = ({ view, setView, currentUser, companyId,
           ]}
           tabs={[
             { id: 'Overview', label: t('students.overview') },
-            { id: 'Disciplines', label: t('students.disciplines') },
+            { id: 'Classes', label: 'Clases' },
             { id: 'Staff', label: t('students.parents') },
             { id: 'Reports', label: t('students.reports') },
             { id: 'Conversations', label: t('students.conversations') },
@@ -742,23 +706,51 @@ const StudentModule: React.FC<Props> = ({ view, setView, currentUser, companyId,
           </div>
         )}
 
-        {activeTab === 'Disciplines' && selected && (
+        {activeTab === 'Classes' && selected && (
           <div className="px-1">
-            <div className="mb-4 flex justify-end"><button onClick={openAddDiscipline} className={primaryBtn}><i className="fa-solid fa-plus" /> {t('students.addDiscipline')}</button></div>
-            {(selected.disciplines || []).length === 0 ? <Empty text={t('students.none')} /> : (
-              <div className="grid gap-2 sm:grid-cols-2">
-                {(selected.disciplines as Enrollment[]).map((d) => (
-                  <div key={d.id} className="flex items-start justify-between gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3">
-                    <div>
-                      <p className="text-sm font-semibold text-slate-900">{disciplineName(d.disciplineId)}</p>
-                      <p className="text-xs text-slate-500">{levelName(d.disciplineId, d.levelId) || '—'} · {enrollLabel(d.status)}</p>
+            {(selected.classes || []).length === 0 ? (
+              <p className="rounded-xl bg-slate-50 px-4 py-8 text-center text-sm text-slate-400">Este alumno no está inscripto en ninguna clase.</p>
+            ) : (
+              <div className="grid gap-3 sm:grid-cols-2">
+                {(selected.classes as any[]).map((cl) => {
+                  const DAYS: Record<number, string> = { 0: 'Dom', 1: 'Lun', 2: 'Mar', 3: 'Mié', 4: 'Jue', 5: 'Vie', 6: 'Sáb' };
+                  const schedules: { dayOfWeek: number; startTime: string; endTime: string }[] = cl.schedules || [];
+                  const teachers: { id: string; name: string; avatar?: string | null }[] = cl.teachers || [];
+                  return (
+                    <div key={cl.id} className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3.5 shadow-sm dark:border-border dark:bg-card">
+                      <div className="flex items-start gap-3">
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-red-50 text-red-500">
+                          <GraduationCap className="size-4" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-semibold text-slate-900 dark:text-foreground">{cl.name}</p>
+                          <p className="text-xs text-slate-500">
+                            {cl.disciplineName && <span>{cl.disciplineName}</span>}
+                            {cl.levelName && <span> · {cl.levelName}</span>}
+                          </p>
+                        </div>
+                        <span className={cn(
+                          'shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold',
+                          cl.status === 'ACTIVE' ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-400'
+                        )}>
+                          {cl.status === 'ACTIVE' ? 'Activa' : cl.status}
+                        </span>
+                      </div>
+                      {schedules.length > 0 && (
+                        <div className="flex items-start gap-2 text-xs text-slate-500">
+                          <CalendarDays className="mt-0.5 size-3.5 shrink-0 text-slate-400" />
+                          <span>{schedules.map((s) => `${DAYS[s.dayOfWeek] ?? s.dayOfWeek} ${s.startTime}–${s.endTime}`).join(' · ')}</span>
+                        </div>
+                      )}
+                      {teachers.length > 0 && (
+                        <div className="flex items-center gap-2 text-xs text-slate-500">
+                          <Users className="size-3.5 shrink-0 text-slate-400" />
+                          <span>{teachers.map((t) => t.name).join(', ')}</span>
+                        </div>
+                      )}
                     </div>
-                    <div className="flex shrink-0 gap-1">
-                      <Button type="button" mode="icon" size="sm" variant="outline" className="size-8" onClick={() => openEditDiscipline(d)} aria-label={t('students.editDiscipline')}><Pencil className="size-3.5" /></Button>
-                      <Button type="button" mode="icon" size="sm" variant="outline" className="size-8 text-destructive hover:bg-destructive/10" onClick={() => removeDiscipline(d)} aria-label={t('students.cancel')}><Trash2 className="size-3.5" /></Button>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -1060,30 +1052,6 @@ const StudentModule: React.FC<Props> = ({ view, setView, currentUser, companyId,
               <Field label={t('students.subject')}><input className={inputClass} value={convForm.subject} onChange={(e) => setConvForm({ ...convForm, subject: e.target.value })} /></Field>
               <Field label={t('students.firstMessage')}><textarea className={inputClass} rows={3} value={convForm.firstMessage} onChange={(e) => setConvForm({ ...convForm, firstMessage: e.target.value })} /></Field>
               <ModalActions onCancel={() => setConvModalOpen(false)} cancel={t('students.cancel')} save={t('students.save')} />
-            </form>
-          </Modal>
-        )}
-        {discModalOpen && (
-          <Modal title={discForm.editing ? t('students.editDiscipline') : t('students.addDiscipline')} onClose={() => setDiscModalOpen(false)}>
-            <form onSubmit={submitDiscipline} className="space-y-4">
-              <Field label={t('students.discipline')}>
-                <select className={inputClass} value={discForm.disciplineId} disabled={discForm.editing} onChange={(e) => setDiscForm({ ...discForm, disciplineId: e.target.value, levelId: '' })} required>
-                  <option value="">—</option>
-                  {meta.disciplines.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
-                </select>
-              </Field>
-              <Field label={t('students.level')}>
-                <select className={inputClass} value={discForm.levelId} onChange={(e) => setDiscForm({ ...discForm, levelId: e.target.value })}>
-                  <option value="">—</option>
-                  {discLevels.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
-                </select>
-              </Field>
-              <Field label={t('students.status')}>
-                <select className={inputClass} value={discForm.status} onChange={(e) => setDiscForm({ ...discForm, status: e.target.value })}>
-                  {ENROLL_STATUSES.map((s) => <option key={s} value={s}>{enrollLabel(s)}</option>)}
-                </select>
-              </Field>
-              <ModalActions onCancel={() => setDiscModalOpen(false)} cancel={t('students.cancel')} save={t('students.save')} />
             </form>
           </Modal>
         )}

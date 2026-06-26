@@ -14,5 +14,13 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
+  mailpit:
+    container_name: ${COMPOSE_PROJECT_NAME:-sinapsisapp}-mailpit
+    image: axllent/mailpit:latest
+    restart: always
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+
 volumes:
   postgres_data:

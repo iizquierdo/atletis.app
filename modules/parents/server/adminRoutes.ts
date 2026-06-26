@@ -21,6 +21,9 @@ export const registerModuleAdminRoutes = async (
     if (columnsEnsured) return;
     await pool.query('ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "phone" TEXT');
     await pool.query('ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "document" TEXT');
+    await pool.query('ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "activationToken" TEXT');
+    await pool.query('ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "activationTokenExpiresAt" TIMESTAMPTZ');
+    await pool.query('ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "emailVerifiedAt" TIMESTAMPTZ');
     columnsEnsured = true;
   };
 
@@ -32,6 +35,7 @@ export const registerModuleAdminRoutes = async (
   const loadOne = async (id: string) => {
     const r = await pool.query(
       `SELECT u.id, u.email, u.name, u."firstName", u."lastName", u.phone, u.document, u."companyId",
+              u."emailVerifiedAt",
               c.name AS "companyName", c."organizationId", o.name AS "organizationName", u."createdAt"
        FROM "User" u
        JOIN "Company" c ON c.id = u."companyId"
@@ -48,6 +52,7 @@ export const registerModuleAdminRoutes = async (
       await ensureColumns();
       const r = await pool.query(
         `SELECT u.id, u.email, u.name, u."firstName", u."lastName", u.phone, u.document, u."companyId",
+                u."emailVerifiedAt",
                 c.name AS "companyName", c."organizationId", o.name AS "organizationName", u."createdAt"
          FROM "User" u
          JOIN "Company" c ON c.id = u."companyId"
@@ -98,8 +103,8 @@ export const registerModuleAdminRoutes = async (
       const id = crypto.randomUUID();
       const name = `${firstName} ${lastName}`.trim();
       await pool.query(
-        `INSERT INTO "User" (id, email, name, "firstName", "lastName", password, role, "roleId", "companyId", phone, document, "createdAt", "updatedAt")
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,NOW(),NOW())`,
+        `INSERT INTO "User" (id, email, name, "firstName", "lastName", password, role, "roleId", "companyId", phone, document, "emailVerifiedAt", "createdAt", "updatedAt")
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,NOW(),NOW(),NOW())`,
         [
           id, email, name, firstName, lastName, password, NATACION_ROLES.TUTOR, tutorRoleId, companyId,
           String(req.body?.phone || '').trim() || null,
@@ -137,9 +142,22 @@ export const registerModuleAdminRoutes = async (
       const phone = req.body?.phone !== undefined ? (String(req.body.phone).trim() || null) : target.phone;
       const document = req.body?.document !== undefined ? (String(req.body.document).trim() || null) : target.document;
       const password = String(req.body?.password || '');
+      const active = req.body?.active !== undefined ? Boolean(req.body.active) : Boolean(target.emailVerifiedAt);
 
       await pool.query(
-        `UPDATE "User" SET email=$1, name=$2, "firstName"=$3, "lastName"=$4, "companyId"=$5, phone=$6, document=$7, "updatedAt"=NOW()${password ? ', password=$9' : ''} WHERE id=$8`,
+        `UPDATE "User"
+         SET email=$1,
+             name=$2,
+             "firstName"=$3,
+             "lastName"=$4,
+             "companyId"=$5,
+             phone=$6,
+             document=$7,
+             "emailVerifiedAt"=${active ? 'COALESCE("emailVerifiedAt", NOW())' : 'NULL'},
+             "activationToken"=${active ? 'NULL' : '"activationToken"'},
+             "activationTokenExpiresAt"=${active ? 'NULL' : '"activationTokenExpiresAt"'},
+             "updatedAt"=NOW()${password ? ', password=$9' : ''}
+         WHERE id=$8`,
         password
           ? [email, name, firstName, lastName, companyId, phone, document, req.params.id, password]
           : [email, name, firstName, lastName, companyId, phone, document, req.params.id]

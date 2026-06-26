@@ -13,14 +13,27 @@ import { applyThemeFromSettings } from "../lib/theme";
 
 export const LoginPage = () => {
   const navigate = useNavigate();
-  const { isAuthenticated, login } = useAuth();
+  const { isAuthenticated, login, registerParent } = useAuth();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [registerForm, setRegisterForm] = useState({
+    firstName: "",
+    lastName: "",
+    email: "",
+    password: "",
+    confirmPassword: "",
+    phone: ""
+  });
   const [remember, setRemember] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
+  const [showRegisterPassword, setShowRegisterPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [registerError, setRegisterError] = useState<string | null>(null);
+  const [registerSuccess, setRegisterSuccess] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [registerLoading, setRegisterLoading] = useState(false);
+  const [registerOpen, setRegisterOpen] = useState(false);
   const [branding, setBranding] = useState(() => readBrandingFromStorage());
   const [logoLoadFailed, setLogoLoadFailed] = useState(false);
   const [bgLoadFailed, setBgLoadFailed] = useState(false);
@@ -68,6 +81,17 @@ export const LoginPage = () => {
     [email, loading, password]
   );
 
+  const canRegister = useMemo(
+    () =>
+      !registerLoading &&
+      registerForm.firstName.trim().length > 0 &&
+      registerForm.lastName.trim().length > 0 &&
+      registerForm.email.trim().length > 0 &&
+      registerForm.password.trim().length >= 6 &&
+      registerForm.password === registerForm.confirmPassword,
+    [registerForm, registerLoading]
+  );
+
   if (isAuthenticated) {
     return <Navigate to="/resumen" replace />;
   }
@@ -90,6 +114,61 @@ export const LoginPage = () => {
       setError(extractErrorMessage(submitError));
     } finally {
       setLoading(false);
+    }
+  };
+
+  const updateRegisterForm = (field: keyof typeof registerForm, value: string) => {
+    setRegisterForm((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const closeRegister = () => {
+    if (registerLoading) return;
+    setRegisterOpen(false);
+    setRegisterError(null);
+    setRegisterSuccess(null);
+  };
+
+  const handleRegisterSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setRegisterError(null);
+    setRegisterSuccess(null);
+
+    if (!registerForm.email.includes("@")) {
+      setRegisterError("Ingresa un email valido.");
+      return;
+    }
+    if (registerForm.password.length < 6) {
+      setRegisterError("La contrasena debe tener al menos 6 caracteres.");
+      return;
+    }
+    if (registerForm.password !== registerForm.confirmPassword) {
+      setRegisterError("Las contrasenas no coinciden.");
+      return;
+    }
+
+    setRegisterLoading(true);
+
+    try {
+      const result = await registerParent({
+        firstName: registerForm.firstName.trim(),
+        lastName: registerForm.lastName.trim(),
+        email: registerForm.email.trim(),
+        password: registerForm.password,
+        phone: registerForm.phone.trim() || undefined
+      });
+      setRegisterSuccess(result.message);
+      setRegisterForm({
+        firstName: "",
+        lastName: "",
+        email: "",
+        password: "",
+        confirmPassword: "",
+        phone: ""
+      });
+    } catch (submitError) {
+      setRegisterError(extractErrorMessage(submitError));
+    } finally {
+      setRegisterLoading(false);
     }
   };
 
@@ -235,13 +314,196 @@ export const LoginPage = () => {
 
           <p className="mt-6 text-center text-sm text-slate-500">
             ¿Nuevo en la familia?{" "}
-            <button className="font-semibold text-[var(--primary)]" type="button">
-              Contactá a tu asesor
+            <button
+              className="font-semibold text-[var(--primary)]"
+              onClick={() => {
+                setRegisterError(null);
+                setRegisterOpen(true);
+              }}
+              type="button"
+            >
+              Registrate
             </button>
           </p>
         </div>
 
       </div>
+
+      {registerOpen && (
+        <div
+          aria-modal="true"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/65 px-4 py-6 backdrop-blur-sm"
+          role="dialog"
+        >
+          <div className="max-h-[92vh] w-full max-w-md overflow-y-auto rounded-3xl bg-white p-6 shadow-2xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-xl font-bold text-slate-900">Crear cuenta familiar</h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  Completa tus datos para acceder al portal.
+                </p>
+              </div>
+              <button
+                aria-label="Cerrar registro"
+                className="rounded-full p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
+                onClick={closeRegister}
+                type="button"
+              >
+                <MaterialIcon name="close" className="text-lg" />
+              </button>
+            </div>
+
+            {registerSuccess && (
+              <div className="mt-5 rounded-2xl bg-emerald-50 px-4 py-4 text-sm text-emerald-700">
+                <div className="flex items-start gap-2">
+                  <MaterialIcon name="mark_email_read" filled className="mt-0.5 text-lg" />
+                  <div>
+                    <p className="font-semibold">Revisa tu email</p>
+                    <p className="mt-1">{registerSuccess}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {!registerSuccess && (
+            <form className="mt-5 space-y-4" onSubmit={handleRegisterSubmit}>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div>
+                  <label className="text-[10px] font-semibold uppercase tracking-wider text-slate-400" htmlFor="register-first-name">
+                    Nombre
+                  </label>
+                  <input
+                    autoComplete="given-name"
+                    className="mt-1 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition-colors focus:border-[var(--primary)] focus:bg-white"
+                    id="register-first-name"
+                    onChange={(e) => updateRegisterForm("firstName", e.target.value)}
+                    required
+                    value={registerForm.firstName}
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-semibold uppercase tracking-wider text-slate-400" htmlFor="register-last-name">
+                    Apellido
+                  </label>
+                  <input
+                    autoComplete="family-name"
+                    className="mt-1 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition-colors focus:border-[var(--primary)] focus:bg-white"
+                    id="register-last-name"
+                    onChange={(e) => updateRegisterForm("lastName", e.target.value)}
+                    required
+                    value={registerForm.lastName}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-[10px] font-semibold uppercase tracking-wider text-slate-400" htmlFor="register-email">
+                  Email
+                </label>
+                <input
+                  autoComplete="email"
+                  className="mt-1 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition-colors focus:border-[var(--primary)] focus:bg-white"
+                  id="register-email"
+                  onChange={(e) => updateRegisterForm("email", e.target.value)}
+                  placeholder="familia@ejemplo.com"
+                  required
+                  type="email"
+                  value={registerForm.email}
+                />
+              </div>
+
+              <div>
+                <label className="text-[10px] font-semibold uppercase tracking-wider text-slate-400" htmlFor="register-phone">
+                  Telefono
+                </label>
+                <input
+                  autoComplete="tel"
+                  className="mt-1 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition-colors focus:border-[var(--primary)] focus:bg-white"
+                  id="register-phone"
+                  onChange={(e) => updateRegisterForm("phone", e.target.value)}
+                  value={registerForm.phone}
+                />
+              </div>
+
+              <div>
+                <label className="text-[10px] font-semibold uppercase tracking-wider text-slate-400" htmlFor="register-password">
+                  Contrasena
+                </label>
+                <div className="mt-1 flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 transition-colors focus-within:border-[var(--primary)] focus-within:bg-white">
+                  <input
+                    autoComplete="new-password"
+                    className="min-w-0 flex-1 bg-transparent text-sm text-slate-900 outline-none placeholder:text-slate-400"
+                    id="register-password"
+                    onChange={(e) => updateRegisterForm("password", e.target.value)}
+                    required
+                    type={showRegisterPassword ? "text" : "password"}
+                    value={registerForm.password}
+                  />
+                  <button
+                    aria-label={showRegisterPassword ? "Ocultar contrasena" : "Mostrar contrasena"}
+                    className="text-slate-400 transition-colors hover:text-slate-600"
+                    onClick={() => setShowRegisterPassword((v) => !v)}
+                    type="button"
+                  >
+                    <MaterialIcon name={showRegisterPassword ? "visibility_off" : "visibility"} className="text-base" />
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-[10px] font-semibold uppercase tracking-wider text-slate-400" htmlFor="register-confirm-password">
+                  Repetir contrasena
+                </label>
+                <input
+                  autoComplete="new-password"
+                  className="mt-1 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition-colors focus:border-[var(--primary)] focus:bg-white"
+                  id="register-confirm-password"
+                  onChange={(e) => updateRegisterForm("confirmPassword", e.target.value)}
+                  required
+                  type={showRegisterPassword ? "text" : "password"}
+                  value={registerForm.confirmPassword}
+                />
+              </div>
+
+              {registerError && (
+                <div className="rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-600">{registerError}</div>
+              )}
+
+              <div className="flex flex-col-reverse gap-3 pt-2 sm:flex-row sm:justify-end">
+                <button
+                  className="rounded-full border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-600 transition-colors hover:bg-slate-50"
+                  disabled={registerLoading}
+                  onClick={closeRegister}
+                  type="button"
+                >
+                  Cancelar
+                </button>
+                <button
+                  className="flex items-center justify-center gap-2 rounded-full bg-[var(--primary)] px-5 py-3 text-sm font-semibold text-white shadow-lg transition-opacity disabled:opacity-50"
+                  disabled={!canRegister}
+                  type="submit"
+                >
+                  {registerLoading ? "Creando..." : "Crear cuenta"}
+                  <MaterialIcon name="person_add" className="text-base" />
+                </button>
+              </div>
+            </form>
+            )}
+
+            {registerSuccess && (
+              <div className="mt-5 flex justify-end">
+                <button
+                  className="rounded-full bg-[var(--primary)] px-5 py-3 text-sm font-semibold text-white shadow-lg"
+                  onClick={closeRegister}
+                  type="button"
+                >
+                  Cerrar
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

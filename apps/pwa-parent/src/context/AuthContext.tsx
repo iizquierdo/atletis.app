@@ -10,8 +10,17 @@ interface AuthContextValue {
   loading: boolean;
   isAuthenticated: boolean;
   login: (email: string, password: string, persistent?: boolean) => Promise<void>;
+  registerParent: (payload: ParentRegistrationPayload) => Promise<{ message: string }>;
   logout: () => void;
   refreshProfile: () => Promise<void>;
+}
+
+export interface ParentRegistrationPayload {
+  firstName: string;
+  lastName: string;
+  email: string;
+  password: string;
+  phone?: string;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -64,6 +73,15 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     setUser(mapAuthUser(data.user));
   }, []);
 
+  const registerParent = useCallback(async (payload: ParentRegistrationPayload) => {
+    const { data } = await api.post<{ message?: string }>("/auth/register-parent", {
+      ...payload,
+      email: payload.email.toLowerCase()
+    });
+
+    return { message: data.message || "Te enviamos un email para activar tu cuenta." };
+  }, []);
+
   const value = useMemo<AuthContextValue>(
     () => ({
       user,
@@ -71,10 +89,11 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       loading,
       isAuthenticated: Boolean(user && token),
       login,
+      registerParent,
       logout,
       refreshProfile
     }),
-    [loading, login, logout, refreshProfile, token, user]
+    [loading, login, logout, refreshProfile, registerParent, token, user]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -565,32 +565,28 @@ const TeachersModule: React.FC<Props> = ({ view, setView, companyId, onSubTitleC
     { key: 'lastName', header: 'Apellido', required: true, example: 'García' },
     { key: 'email', header: 'Email', required: true, example: 'maria@email.com' },
     { key: 'phone', header: 'Teléfono', example: '1122334455' },
-    { key: 'document', header: 'Documento', example: '87654321' },
     { key: 'password', header: 'Contraseña', required: true, example: 'Pass1234' },
-    { key: 'companyName', header: 'Sede', required: true, example: 'Sede Central' },
   ];
 
   const handleTeacherImport = async (rows: Record<string, string>[]) => {
     let success = 0;
     const errors: { row: number; message: string }[] = [];
+    const defaultCompanyId = companyId || companies[0]?.id || '';
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
       const rowNum = i + 2;
       if (!row.firstName || !row.lastName) { errors.push({ row: rowNum, message: 'Nombre y Apellido son requeridos' }); continue; }
       if (!row.email) { errors.push({ row: rowNum, message: 'Email es requerido' }); continue; }
       if (!row.password) { errors.push({ row: rowNum, message: 'Contraseña es requerida' }); continue; }
-      const company = row.companyName
-        ? companies.find((c) => c.name.toLowerCase() === row.companyName.toLowerCase())
-        : companies[0];
-      if (!company) { errors.push({ row: rowNum, message: `Sede "${row.companyName}" no encontrada` }); continue; }
+      if (!defaultCompanyId) { errors.push({ row: rowNum, message: 'No hay una sede disponible para crear el profesor' }); continue; }
       try {
         const res = await fetch('/api/teachers', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             firstName: row.firstName, lastName: row.lastName, email: row.email,
-            phone: row.phone || '', document: row.document || '',
-            password: row.password, companyId: company.id,
+            phone: row.phone || '', document: '',
+            password: row.password, companyId: defaultCompanyId,
           }),
         });
         if (!res.ok) { const b = await res.json().catch(() => ({})); errors.push({ row: rowNum, message: b?.error || 'Error al crear' }); }

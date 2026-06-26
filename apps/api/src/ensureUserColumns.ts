@@ -6,6 +6,9 @@ export const ensureUserColumns = async (pool: pg.Pool) => {
   await pool.query('ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "sessionToken" TEXT');
   await pool.query('ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "passwordResetToken" TEXT');
   await pool.query('ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "passwordResetExpiresAt" TIMESTAMPTZ');
+  await pool.query('ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "activationToken" TEXT');
+  await pool.query('ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "activationTokenExpiresAt" TIMESTAMPTZ');
+  await pool.query('ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "emailVerifiedAt" TIMESTAMPTZ');
   await pool.query('ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "imageUrl" TEXT');
   await pool.query('ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "coverUrl" TEXT');
 };

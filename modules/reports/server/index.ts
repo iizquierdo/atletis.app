@@ -13,7 +13,7 @@ function getRequesterUserId(req: express.Request): string {
 type RequesterScope = {
   userId: string; roleName: string; legacyRole: string;
   isSuperAdmin: boolean; isAdminSede: boolean; isProfesor: boolean; isTutor: boolean; isStaff: boolean;
-  primaryCompanyId: string | null; accessCompanyIds: string[]; companyScope: string[];
+  primaryCompanyId: string | null; organizationId: string | null; accessCompanyIds: string[]; companyScope: string[];
 };
 
 async function resolveRequesterScope(pool: Pool, userId: string): Promise<RequesterScope | null> {
@@ -21,8 +21,11 @@ async function resolveRequesterScope(pool: Pool, userId: string): Promise<Reques
   if (!id) return null;
   const r = await pool.query(
     `SELECT u.id, COALESCE(u.role,'') AS "legacyRole", COALESCE(r.name,'') AS "roleName",
-            u."companyId", u."accessCompanyIds"
-     FROM "User" u LEFT JOIN "Role" r ON r.id = u."roleId" WHERE u.id = $1 LIMIT 1`,
+            u."companyId", u."accessCompanyIds", c."organizationId"
+     FROM "User" u
+     LEFT JOIN "Role" r ON r.id = u."roleId"
+     LEFT JOIN "Company" c ON c.id = u."companyId"
+     WHERE u.id = $1 LIMIT 1`,
     [id]
   );
   const row = r.rows[0];
@@ -35,12 +38,13 @@ async function resolveRequesterScope(pool: Pool, userId: string): Promise<Reques
   const isProfesor   = roleName === 'Profesor';
   const isTutor      = roleName === 'Tutor';
   const primaryCompanyId = row.companyId ? String(row.companyId) : null;
+  const organizationId = row.organizationId ? String(row.organizationId) : null;
   const raw = row.accessCompanyIds;
   const accessCompanyIds: string[] = Array.isArray(raw) ? raw.map(String).filter(Boolean)
     : (typeof raw === 'string' && raw.startsWith('{')) ? raw.replace(/[{}]/g, '').split(',').map((s: string) => s.trim()).filter(Boolean)
     : [];
   const companyScope = Array.from(new Set([...(primaryCompanyId ? [primaryCompanyId] : []), ...accessCompanyIds]));
-  return { userId: id, roleName, legacyRole, isSuperAdmin, isAdminSede, isProfesor, isTutor, isStaff: isSuperAdmin || isAdminSede, primaryCompanyId, accessCompanyIds, companyScope };
+  return { userId: id, roleName, legacyRole, isSuperAdmin, isAdminSede, isProfesor, isTutor, isStaff: isSuperAdmin || isAdminSede, primaryCompanyId, organizationId, accessCompanyIds, companyScope };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -94,6 +98,36 @@ export default function registerReportsModule({ app, pool }: ReportsModuleContex
     )
   )`;
 
+  const scopedStudentClause = (scope: RequesterScope, params: any[]): string => {
+    if (scope.isSuperAdmin) {
+      if (!scope.organizationId) return 'true';
+      params.push(scope.organizationId);
+      return `s."companyId" IN (SELECT id FROM "Company" WHERE "organizationId" = $${params.length})`;
+    }
+    if (scope.isAdminSede) {
+      if (!scope.companyScope.length) return 'false';
+      params.push(scope.companyScope);
+      return `s."companyId" = ANY($${params.length})`;
+    }
+    if (scope.isProfesor) {
+      params.push(scope.userId);
+      return professorStudentScopeSql(`$${params.length}`);
+    }
+    return 'false';
+  };
+
+  const canAccessReport = async (scope: RequesterScope | null, reportId: string): Promise<boolean> => {
+    if (!scope) return false;
+    const params: any[] = [reportId];
+    const clause = scopedStudentClause(scope, params);
+    if (clause === 'false') return false;
+    const { rows } = await pool.query(
+      `SELECT 1 ${BASE_FROM} WHERE r.id = $1 ${clause === 'true' ? '' : `AND ${clause}`} LIMIT 1`,
+      params
+    );
+    return Boolean(rows[0]);
+  };
+
   // ── /meta/students must come BEFORE /:id ─────────────────────────────────
   router.get('/meta/students', async (req, res) => {
     try {
@@ -103,18 +137,9 @@ export default function registerReportsModule({ app, pool }: ReportsModuleContex
       const params: any[] = [];
       const conditions: string[] = ['s.status = \'ACTIVE\''];
 
-      if (scope.isSuperAdmin) {
-        // no restriction
-      } else if (scope.isAdminSede) {
-        if (!scope.companyScope.length) return res.json([]);
-        params.push(scope.companyScope);
-        conditions.push(`s."companyId" = ANY($${params.length})`);
-      } else if (scope.isProfesor) {
-        params.push(scope.userId);
-        conditions.push(professorStudentScopeSql(`$${params.length}`));
-      } else {
-        return res.json([]);
-      }
+      const studentScope = scopedStudentClause(scope, params);
+      if (studentScope === 'false') return res.json([]);
+      if (studentScope !== 'true') conditions.push(studentScope);
 
       const { rows } = await pool.query(
         `SELECT s.id, s."firstName", s."lastName", c.name AS "companyName"
@@ -138,24 +163,23 @@ export default function registerReportsModule({ app, pool }: ReportsModuleContex
       const params: any[] = [];
       const conditions: string[] = [];
 
-      if (scope.isSuperAdmin) {
-        // no restriction
-      } else if (scope.isAdminSede) {
-        if (!scope.companyScope.length) return res.json({ items: [], total: 0 });
-        params.push(scope.companyScope);
-        conditions.push(`s."companyId" = ANY($${params.length})`);
-      } else if (scope.isProfesor) {
-        params.push(scope.userId);
-        conditions.push(professorStudentScopeSql(`$${params.length}`));
-      } else {
-        return res.status(403).json({ error: 'Access denied.' });
-      }
+      const studentScope = scopedStudentClause(scope, params);
+      if (studentScope === 'false') return res.status(403).json({ error: 'Access denied.' });
+      if (studentScope !== 'true') conditions.push(studentScope);
 
       if (req.query.studentId) { params.push(req.query.studentId); conditions.push(`r."studentId" = $${params.length}`); }
       if (req.query.authorId)  { params.push(req.query.authorId);  conditions.push(`r."authorId" = $${params.length}`); }
       if (req.query.status)    { params.push(req.query.status);    conditions.push(`r.status = $${params.length}`); }
       if (req.query.type)      { params.push(req.query.type);      conditions.push(`r.type = $${params.length}`); }
-      if (req.query.companyId) { params.push(req.query.companyId); conditions.push(`s."companyId" = $${params.length}`); }
+      if (req.query.companyId) {
+        const requestedCompanyId = String(req.query.companyId || '').trim();
+        if (scope.isSuperAdmin && scope.organizationId) {
+          const company = await pool.query('SELECT 1 FROM "Company" WHERE id = $1 AND "organizationId" = $2 LIMIT 1', [requestedCompanyId, scope.organizationId]);
+          if (!company.rows[0]) return res.json({ items: [], total: 0, page: 1, limit: 50 });
+        }
+        params.push(requestedCompanyId);
+        conditions.push(`s."companyId" = $${params.length}`);
+      }
       if (req.query.q) {
         params.push(`%${req.query.q}%`);
         const n = params.length;
@@ -183,6 +207,7 @@ export default function registerReportsModule({ app, pool }: ReportsModuleContex
     try {
       const scope = await scopeOf(req);
       if (!scope) return res.status(403).json({ error: 'Authentication required.' });
+      if (!(await canAccessReport(scope, req.params.id))) return res.status(404).json({ error: 'Report not found.' });
       const { rows } = await pool.query(`SELECT ${SELECT_COLS} ${BASE_FROM} WHERE r.id = $1 LIMIT 1`, [req.params.id]);
       if (!rows[0]) return res.status(404).json({ error: 'Report not found.' });
       res.json(rows[0]);
@@ -203,18 +228,14 @@ export default function registerReportsModule({ app, pool }: ReportsModuleContex
       if (!studentId) return res.status(400).json({ error: 'studentId is required.' });
       if (!title)     return res.status(400).json({ error: 'title is required.' });
 
-      if (!scope.isStaff) {
-        const check = await pool.query(
-          `SELECT 1 FROM "StudentTeacher" WHERE "studentId"=$1 AND "teacherId"=$2 AND active LIMIT 1
-           UNION ALL
-           SELECT 1 FROM "ClassStudent" cs
-           JOIN "ClassTeacher" ct ON ct."classId" = cs."classId" AND ct."teacherId" = $2 AND ct.active = true
-           WHERE cs."studentId" = $1 AND cs.status = 'ACTIVE'
-           LIMIT 1`,
-          [studentId, scope.userId]
-        );
-        if (!check.rows.length) return res.status(403).json({ error: 'Student out of scope.' });
-      }
+      const studentParams: any[] = [studentId];
+      const studentScope = scopedStudentClause(scope, studentParams);
+      if (studentScope === 'false') return res.status(403).json({ error: 'Student out of scope.' });
+      const check = await pool.query(
+        `SELECT 1 FROM "Student" s WHERE s.id = $1 ${studentScope === 'true' ? '' : `AND ${studentScope}`} LIMIT 1`,
+        studentParams
+      );
+      if (!check.rows.length) return res.status(403).json({ error: 'Student out of scope.' });
 
       const id     = crypto.randomUUID();
       const status = String(req.body?.status || 'DRAFT').trim();
@@ -252,6 +273,7 @@ export default function registerReportsModule({ app, pool }: ReportsModuleContex
       const existing = await pool.query('SELECT * FROM "StudentReport" WHERE id=$1 LIMIT 1', [id]);
       const rep = existing.rows[0];
       if (!rep) return res.status(404).json({ error: 'Report not found.' });
+      if (!(await canAccessReport(scope, id))) return res.status(404).json({ error: 'Report not found.' });
       if (!scope || (!scope.isStaff && rep.authorId !== scope.userId)) return res.status(403).json({ error: 'Cannot edit this report.' });
 
       const status = req.body?.status !== undefined ? String(req.body.status).trim() : rep.status;
@@ -291,6 +313,7 @@ export default function registerReportsModule({ app, pool }: ReportsModuleContex
       const existing = await pool.query('SELECT * FROM "StudentReport" WHERE id=$1 LIMIT 1', [id]);
       const rep = existing.rows[0];
       if (!rep) return res.status(404).json({ error: 'Report not found.' });
+      if (!(await canAccessReport(scope, id))) return res.status(404).json({ error: 'Report not found.' });
       if (!scope || (!scope.isStaff && rep.authorId !== scope.userId)) return res.status(403).json({ error: 'Cannot delete this report.' });
 
       await pool.query('DELETE FROM "StudentReportRecipient" WHERE "reportId"=$1', [id]).catch(() => {});

@@ -9,60 +9,6 @@ import { searchStudentByDni, linkStudentToTutor, fetchStudentWeeklyAttendance } 
 import { extractErrorMessage } from "../lib/api";
 import type { ClassScheduleSlot, StudentDiscipline, StudentSummary } from "../types";
 
-const demoRoster: StudentSummary[] = [
-  {
-    id: "demo-mateo",
-    firstName: "Mateo",
-    lastName: "Valenzuela",
-    status: "ACTIVE",
-    sede: { id: "demo-sede", name: "Sucursal Central" },
-    disciplines: [
-      {
-        id: "demo-natacion",
-        status: "ACTIVE",
-        discipline: {
-          id: "nat",
-          name: "Natación Infantil",
-          active: true,
-          description: "Desarrollo técnico y resistencia acuática."
-        },
-        level: {
-          id: "lv-nat-2",
-          active: true,
-          levelOrder: 2,
-          name: "Intermedio",
-          description: "Dominio básico de crol y espalda.",
-          color: "#63d972"
-        }
-      },
-      {
-        id: "demo-gimnasia",
-        status: "ACTIVE",
-        discipline: {
-          id: "gim",
-          name: "Gimnasia Artística",
-          active: true,
-          description: "Coordinación corporal y ritmo."
-        },
-        level: {
-          id: "lv-gim-1",
-          active: true,
-          levelOrder: 1,
-          name: "Formativo",
-          description: "Bases de fuerza y flexibilidad."
-        }
-      }
-    ]
-  },
-  {
-    id: "demo-sofia",
-    firstName: "Sofía",
-    lastName: "Ruiz",
-    status: "ACTIVE",
-    sede: { id: "demo-sede", name: "Sucursal Norte" },
-    disciplines: []
-  }
-];
 
 const getDisciplineIcon = (name: string) => {
   const n = name.toLowerCase();
@@ -199,8 +145,121 @@ export const ResumenPage = () => {
     }
   };
 
+  const addAthleteModal = showModal && (
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 px-4 pb-8 pt-16 backdrop-blur-sm sm:items-center sm:pb-0"
+      onClick={(e) => { if (e.target === e.currentTarget) closeModal(); }}
+    >
+      <div className="w-full max-w-sm rounded-3xl bg-white p-6 shadow-2xl">
+        {/* Header */}
+        <div className="mb-5 flex items-center justify-between">
+          <h3 className="text-base font-bold text-slate-900">Añadir atleta</h3>
+          <button
+            className="flex h-8 w-8 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100"
+            onClick={closeModal}
+            type="button"
+          >
+            <MaterialIcon name="close" className="text-base" />
+          </button>
+        </div>
+
+        {/* DNI input */}
+        <label className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+          Numero de DNI
+        </label>
+        <div className="mt-1.5 flex gap-2">
+          <div className="flex flex-1 items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 transition-colors focus-within:border-[var(--primary)] focus-within:bg-white">
+            <MaterialIcon name="badge" className="text-base text-slate-400" />
+            <input
+              ref={dniInputRef}
+              className="flex-1 bg-transparent text-sm text-slate-900 outline-none placeholder:text-slate-400"
+              disabled={searchStatus === "loading"}
+              inputMode="numeric"
+              onChange={(e) => {
+                setDni(e.target.value);
+                if (searchStatus !== "idle") {
+                  setSearchStatus("idle");
+                  setFoundStudent(null);
+                  setSearchError(null);
+                }
+              }}
+              onKeyDown={(e) => { if (e.key === "Enter") void handleSearch(); }}
+              placeholder="Ej. 38123456"
+              type="text"
+              value={dni}
+            />
+          </div>
+          <button
+            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[var(--primary)] text-white shadow-sm transition-opacity disabled:opacity-40"
+            disabled={!dni.trim() || searchStatus === "loading"}
+            onClick={() => void handleSearch()}
+            type="button"
+          >
+            {searchStatus === "loading"
+              ? <MaterialIcon name="progress_activity" className="text-base animate-spin" />
+              : <MaterialIcon name="search" className="text-base" />
+            }
+          </button>
+        </div>
+
+        {/* Result */}
+        {searchStatus === "found" && foundStudent && (
+          <div className="mt-5">
+            <p className="mb-3 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+              Alumno encontrado
+            </p>
+            <div className="flex items-center gap-3 rounded-2xl bg-slate-50 px-4 py-3">
+              <StudentAvatar
+                size="h-12 w-12"
+                student={foundStudent}
+                variant="found"
+              />
+              <div className="min-w-0">
+                <p className="truncate text-sm font-bold text-slate-900">
+                  {foundStudent.firstName} {foundStudent.lastName}
+                </p>
+                {foundStudent.sede?.name && (
+                  <p className="truncate text-xs text-slate-500">{foundStudent.sede.name}</p>
+                )}
+              </div>
+              <MaterialIcon name="check_circle" filled className="ml-auto shrink-0 text-[var(--primary)]" />
+            </div>
+
+            {linkError && (
+              <p className="mt-2 text-xs text-red-500">{linkError}</p>
+            )}
+
+            <button
+              className="mt-4 flex w-full items-center justify-center gap-2 rounded-full bg-[var(--primary)] py-3.5 text-sm font-semibold text-white shadow-lg transition-opacity disabled:opacity-50"
+              disabled={linkStatus === "loading" || linkStatus === "done"}
+              onClick={() => void handleLink()}
+              type="button"
+            >
+              {linkStatus === "loading" && <MaterialIcon name="progress_activity" className="text-base animate-spin" />}
+              {linkStatus === "done" && <MaterialIcon name="check" className="text-base" />}
+              {linkStatus === "idle" || linkStatus === "error" ? "Confirmar y añadir" : linkStatus === "loading" ? "Añadiendo..." : "Añadido"}
+            </button>
+          </div>
+        )}
+
+        {searchStatus === "error" && (
+          <div className="mt-4 flex items-start gap-2 rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-600">
+            <MaterialIcon name="person_search" className="mt-0.5 shrink-0 text-base" />
+            <span>{searchError ?? "No se encontro un alumno con ese DNI."}</span>
+          </div>
+        )}
+
+        {searchStatus === "idle" && (
+          <p className="mt-4 text-center text-xs text-slate-400">
+            Ingresa el DNI del alumno para buscarlo en el sistema.
+          </p>
+        )}
+      </div>
+    </div>
+  );
+
   const hasRealData = students.length > 0;
-  const roster = hasRealData ? students : demoRoster;
+  const roster = students;
   const activeStudent = selectedStudent ?? roster[0] ?? null;
 
   const activeDisciplines = useMemo(
@@ -277,25 +336,30 @@ export const ResumenPage = () => {
 
   if (!activeStudent) {
     return (
-      <div className="flex flex-col items-center justify-center gap-3 px-4 py-20 text-center">
+      <>
+      <div className="flex min-h-[calc(100vh-9rem)] flex-col items-center justify-center gap-3 px-4 py-20 text-center">
         <MaterialIcon name="group_add" className="text-4xl text-slate-300" />
         <h3 className="font-semibold text-slate-700">Aún no tenés atletas activos</h3>
-        <p className="text-sm text-slate-400">
-          Cuando el staff asigne alumnos a tu cuenta, aparecerán aquí.
+        <p className="max-w-xs text-sm text-slate-400">
+          Añadí un alumno con su DNI para vincularlo a tu cuenta familiar.
         </p>
+        <button
+          className="mt-3 flex items-center justify-center gap-2 rounded-full bg-[var(--primary)] px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-[var(--primary)]/20 transition-opacity hover:opacity-90"
+          onClick={openModal}
+          type="button"
+        >
+          <MaterialIcon name="person_add" className="text-base" />
+          Añadir alumno
+        </button>
       </div>
+      {addAthleteModal}
+      </>
     );
   }
 
   return (
     <div className="px-4 pb-6 pt-5">
-      {/* Demo / error banners */}
-      {!hasRealData && (
-        <div className="mb-4 flex items-center gap-2 rounded-2xl bg-blue-50 px-4 py-3 text-sm text-blue-700">
-          <MaterialIcon name="science" className="text-base" />
-          <span>Vista demo — aún no hay atletas asignados.</span>
-        </div>
-      )}
+      {/* Error banner */}
       {error && (
         <div className="mb-4 flex items-center gap-2 rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-600">
           <MaterialIcon name="warning" filled className="text-base" />
@@ -327,14 +391,12 @@ export const ResumenPage = () => {
           </div>
           <div className="flex gap-3">
             {roster.map((student) => {
-              const isActive = hasRealData
-                ? student.id === selectedStudentId
-                : student.id === activeStudent.id;
+              const isActive = student.id === selectedStudentId;
               return (
                 <button
                   key={student.id}
                   className={`flex flex-col items-center gap-1 transition-opacity ${isActive ? "opacity-100" : "opacity-40"}`}
-                  onClick={() => hasRealData && setSelectedStudentId(student.id)}
+                  onClick={() => setSelectedStudentId(student.id)}
                   type="button"
                 >
                   <StudentAvatar
@@ -494,119 +556,7 @@ export const ResumenPage = () => {
         </div>
 
       </div>
-      {/* Add athlete modal */}
-      {showModal && (
-        <div
-          className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 px-4 pb-8 pt-16 backdrop-blur-sm sm:items-center sm:pb-0"
-          onClick={(e) => { if (e.target === e.currentTarget) closeModal(); }}
-        >
-          <div className="w-full max-w-sm rounded-3xl bg-white p-6 shadow-2xl">
-            {/* Header */}
-            <div className="mb-5 flex items-center justify-between">
-              <h3 className="text-base font-bold text-slate-900">Añadir atleta</h3>
-              <button
-                className="flex h-8 w-8 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100"
-                onClick={closeModal}
-                type="button"
-              >
-                <MaterialIcon name="close" className="text-base" />
-              </button>
-            </div>
-
-            {/* DNI input */}
-            <label className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-              Número de DNI
-            </label>
-            <div className="mt-1.5 flex gap-2">
-              <div className="flex flex-1 items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 focus-within:border-[var(--primary)] focus-within:bg-white transition-colors">
-                <MaterialIcon name="badge" className="text-base text-slate-400" />
-                <input
-                  ref={dniInputRef}
-                  className="flex-1 bg-transparent text-sm text-slate-900 outline-none placeholder:text-slate-400"
-                  disabled={searchStatus === "loading"}
-                  inputMode="numeric"
-                  onChange={(e) => {
-                    setDni(e.target.value);
-                    if (searchStatus !== "idle") {
-                      setSearchStatus("idle");
-                      setFoundStudent(null);
-                      setSearchError(null);
-                    }
-                  }}
-                  onKeyDown={(e) => { if (e.key === "Enter") void handleSearch(); }}
-                  placeholder="Ej. 38123456"
-                  type="text"
-                  value={dni}
-                />
-              </div>
-              <button
-                className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[var(--primary)] text-white shadow-sm transition-opacity disabled:opacity-40"
-                disabled={!dni.trim() || searchStatus === "loading"}
-                onClick={() => void handleSearch()}
-                type="button"
-              >
-                {searchStatus === "loading"
-                  ? <MaterialIcon name="progress_activity" className="text-base animate-spin" />
-                  : <MaterialIcon name="search" className="text-base" />
-                }
-              </button>
-            </div>
-
-            {/* Result */}
-            {searchStatus === "found" && foundStudent && (
-              <div className="mt-5">
-                <p className="mb-3 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-                  Alumno encontrado
-                </p>
-                <div className="flex items-center gap-3 rounded-2xl bg-slate-50 px-4 py-3">
-                  <StudentAvatar
-                    size="h-12 w-12"
-                    student={foundStudent}
-                    variant="found"
-                  />
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-bold text-slate-900">
-                      {foundStudent.firstName} {foundStudent.lastName}
-                    </p>
-                    {foundStudent.sede?.name && (
-                      <p className="truncate text-xs text-slate-500">{foundStudent.sede.name}</p>
-                    )}
-                  </div>
-                  <MaterialIcon name="check_circle" filled className="ml-auto shrink-0 text-[var(--primary)]" />
-                </div>
-
-                {linkError && (
-                  <p className="mt-2 text-xs text-red-500">{linkError}</p>
-                )}
-
-                <button
-                  className="mt-4 flex w-full items-center justify-center gap-2 rounded-full bg-[var(--primary)] py-3.5 text-sm font-semibold text-white shadow-lg transition-opacity disabled:opacity-50"
-                  disabled={linkStatus === "loading" || linkStatus === "done"}
-                  onClick={() => void handleLink()}
-                  type="button"
-                >
-                  {linkStatus === "loading" && <MaterialIcon name="progress_activity" className="text-base animate-spin" />}
-                  {linkStatus === "done" && <MaterialIcon name="check" className="text-base" />}
-                  {linkStatus === "idle" || linkStatus === "error" ? "Confirmar y añadir" : linkStatus === "loading" ? "Añadiendo…" : "¡Añadido!"}
-                </button>
-              </div>
-            )}
-
-            {searchStatus === "error" && (
-              <div className="mt-4 flex items-start gap-2 rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-600">
-                <MaterialIcon name="person_search" className="mt-0.5 shrink-0 text-base" />
-                <span>{searchError ?? "No se encontró un alumno con ese DNI."}</span>
-              </div>
-            )}
-
-            {searchStatus === "idle" && (
-              <p className="mt-4 text-center text-xs text-slate-400">
-                Ingresá el DNI del alumno para buscarlo en el sistema.
-              </p>
-            )}
-          </div>
-        </div>
-      )}
+      {addAthleteModal}
     </div>
   );
 };

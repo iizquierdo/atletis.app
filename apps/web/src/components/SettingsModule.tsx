@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
+import { Copy, Share2 } from 'lucide-react';
 import UserManagement from './UserManagement';
 import RoleManagement from './RoleManagement';
 import ModuleManagement from './ModuleManagement';
@@ -86,6 +87,7 @@ interface CategoryItem {
 // ─── App Branding Section ────────────────────────────────────────────────────
 
 interface OrgBranding {
+    organizationId: string | null;
     appName: string | null;
     slogan: string | null;
     logoUrl: string | null;
@@ -96,7 +98,7 @@ interface OrgBranding {
     secondaryColor: string | null;
 }
 
-const EMPTY_BRANDING: OrgBranding = { appName: null, slogan: null, logoUrl: null, isologoUrl: null, faviconUrl: null, backgroundImageUrl: null, primaryColor: null, secondaryColor: null };
+const EMPTY_BRANDING: OrgBranding = { organizationId: null, appName: null, slogan: null, logoUrl: null, isologoUrl: null, faviconUrl: null, backgroundImageUrl: null, primaryColor: null, secondaryColor: null };
 
 const isLikelyColor = (v: string) => /^#[0-9a-fA-F]{3,8}$|^rgb|^hsl/.test(v.trim());
 
@@ -176,6 +178,33 @@ const AppBrandingSection: React.FC = () => {
         }
     };
 
+    const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
+    const installUrl = branding.organizationId ? `${baseUrl}/install/${branding.organizationId}` : '';
+
+    const copyInstallUrl = async () => {
+        if (!installUrl) return;
+        try {
+            await navigator.clipboard.writeText(installUrl);
+            toast.success('URL copiada');
+        } catch {
+            toast.error('No se pudo copiar la URL');
+        }
+    };
+
+    const shareInstallUrl = async () => {
+        if (!installUrl) return;
+        const title = branding.appName || 'Aplicaciones';
+        if (navigator.share) {
+            try {
+                await navigator.share({ title, text: 'Instalá las aplicaciones', url: installUrl });
+                return;
+            } catch (error) {
+                if (error instanceof DOMException && error.name === 'AbortError') return;
+            }
+        }
+        await copyInstallUrl();
+    };
+
     const inputClass = 'w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500';
 
     return (
@@ -218,6 +247,44 @@ const AppBrandingSection: React.FC = () => {
                                 className={inputClass}
                             />
                             <p className="text-xs text-slate-400">Se muestra debajo del nombre en la pantalla de acceso.</p>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Compartir aplicaciones */}
+                <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+                    <h3 className="mb-1 text-base font-semibold text-slate-800">Compartir aplicaciones</h3>
+                    <p className="mb-4 text-xs text-slate-400">Link para instalar las aplicaciones de esta organizaciÃ³n.</p>
+                    <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+                        <div className="relative min-w-0 flex-1">
+                            <input
+                                type="text"
+                                value={installUrl}
+                                readOnly
+                                placeholder={loading ? 'Cargando...' : 'No se pudo generar el link'}
+                                className={`${inputClass} pr-11 font-mono`}
+                            />
+                            <button
+                                type="button"
+                                onClick={() => void copyInstallUrl()}
+                                disabled={!installUrl}
+                                className="absolute right-1.5 top-1/2 inline-flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-slate-800 disabled:opacity-50"
+                                aria-label="Copiar URL"
+                                title="Copiar URL"
+                            >
+                                <Copy className="h-4 w-4" />
+                            </button>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                            <button
+                                type="button"
+                                onClick={() => void shareInstallUrl()}
+                                disabled={!installUrl}
+                                className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+                            >
+                                <Share2 className="h-4 w-4" />
+                                Compartir
+                            </button>
                         </div>
                     </div>
                 </div>
