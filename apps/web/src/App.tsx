@@ -196,11 +196,10 @@ const App: React.FC = () => {
   const publicCoreRef = useRef<PublicCorePayload | null>(null);
   publicCoreRef.current = publicCore;
 
-  const readableModuleCodes = useMemo(() => {
-    const permissions = currentUser?.roleRef?.permissions || [];
+  const isAdministrativeUser = useMemo(() => {
     const legacyRole = String(currentUser?.role || '').trim().toLowerCase();
     const roleName = String(currentUser?.roleRef?.name || '').trim().toLowerCase();
-    const hasAdminRole =
+    return (
       legacyRole === 'administrator' ||
       legacyRole === 'admin' ||
       legacyRole === 'administrador' ||
@@ -210,10 +209,20 @@ const App: React.FC = () => {
       roleName === 'admin' ||
       roleName === 'administrador' ||
       roleName === 'admin sede' ||
-      roleName === 'super admin';
+      roleName === 'super admin'
+    );
+  }, [currentUser]);
 
-    if (hasAdminRole) {
-      return activeModuleCodes;
+  const readableModuleCodes = useMemo(() => {
+    const permissions = currentUser?.roleRef?.permissions || [];
+
+    if (isAdministrativeUser) {
+      return Array.from(
+        new Set([
+          ...activeModuleCodes,
+          ...ALL_CLIENT_MODULES.map((module) => String(module.code || '').toUpperCase()).filter(Boolean)
+        ])
+      );
     }
 
     const byPermission = new Set(
@@ -225,7 +234,7 @@ const App: React.FC = () => {
 
     if (byPermission.size === 0) return [];
     return activeModuleCodes.filter((code) => byPermission.has(String(code || '').toUpperCase()));
-  }, [activeModuleCodes, currentUser]);
+  }, [activeModuleCodes, currentUser, isAdministrativeUser]);
 
   const activeClientModules = useMemo(
     () => ALL_CLIENT_MODULES.filter((module) => readableModuleCodes.includes(String(module.code || '').toUpperCase())),
