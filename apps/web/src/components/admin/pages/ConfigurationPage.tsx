@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input, inputVariants } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
+import { assetUrl } from '@/lib/api-base';
 import { cn } from '@/lib/utils';
 import { AlertCircle, CheckCircle2 } from 'lucide-react';
 
@@ -243,7 +244,7 @@ const ConfigurationPage: React.FC = () => {
                 }}
               />
               {row.logoUrl ? (
-                <img src={row.logoUrl} alt="Logo" className="h-14 max-w-[200px] rounded border object-contain p-1" />
+                <img src={assetUrl(row.logoUrl)} alt="Logo" className="h-14 max-w-[200px] rounded border object-contain p-1" />
               ) : (
                 <p className="text-xs text-muted-foreground">Sin logo</p>
               )}
@@ -263,7 +264,7 @@ const ConfigurationPage: React.FC = () => {
                 }}
               />
               {row.faviconUrl ? (
-                <img src={row.faviconUrl} alt="Favicon" className="h-10 w-10 rounded border object-contain p-1" />
+                <img src={assetUrl(row.faviconUrl)} alt="Favicon" className="h-10 w-10 rounded border object-contain p-1" />
               ) : (
                 <p className="text-xs text-muted-foreground">Sin favicon</p>
               )}
@@ -285,7 +286,7 @@ const ConfigurationPage: React.FC = () => {
               {row.loginBackgroundUrl ? (
                 <div className="flex flex-col gap-2 rounded-md border border-border bg-muted/30 p-3 sm:flex-row sm:items-center">
                   <img
-                    src={row.loginBackgroundUrl}
+                    src={assetUrl(row.loginBackgroundUrl)}
                     alt=""
                     className="h-20 max-w-full rounded border object-cover sm:max-w-[280px]"
                   />
@@ -388,7 +389,7 @@ const ConfigurationPage: React.FC = () => {
               />
               {row.sidebarLogoUrl ? (
                 <div className="flex items-center gap-3 rounded-md border border-border bg-black p-2">
-                  <img src={row.sidebarLogoUrl} alt="" className="h-9 w-9 object-contain" />
+                  <img src={assetUrl(row.sidebarLogoUrl)} alt="" className="h-9 w-9 object-contain" />
                   <Button type="button" variant="outline" size="sm" onClick={() => update('sidebarLogoUrl', null)} disabled={loading}>
                     Quitar logo (volver al predeterminado)
                   </Button>

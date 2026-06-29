@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
+import { assetUrl } from '@/lib/api-base';
 import { AlertCircle, ArrowLeft, CheckCircle2, X } from 'lucide-react';
 
 interface OrgBranding {
@@ -205,7 +206,7 @@ const OrganizationBrandingPage: React.FC = () => {
                 {uploading === key && <p className="text-xs text-primary">Subiendo…</p>}
                 {branding[key] ? (
                   <div className="flex items-center gap-2">
-                    <img src={branding[key]!} alt={label} className="h-12 max-w-[120px] rounded border object-contain p-1" />
+                    <img src={assetUrl(branding[key])} alt={label} className="h-12 max-w-[120px] rounded border object-contain p-1" />
                     <Button type="button" variant="ghost" size="sm" mode="icon" className="size-7 text-muted-foreground hover:text-destructive" onClick={() => update(key, null)} title={`Quitar ${label}`}>
                       <X className="size-3.5" />
                     </Button>
@@ -235,7 +236,7 @@ const OrganizationBrandingPage: React.FC = () => {
             {uploading === 'backgroundImageUrl' && <p className="text-xs text-primary">Subiendo…</p>}
             {branding.backgroundImageUrl ? (
               <div className="flex flex-col gap-2 rounded-md border border-border bg-muted/30 p-3 sm:flex-row sm:items-center">
-                <img src={branding.backgroundImageUrl} alt="Fondo" className="h-24 max-w-full rounded border object-cover sm:max-w-[320px]" />
+                <img src={assetUrl(branding.backgroundImageUrl)} alt="Fondo" className="h-24 max-w-full rounded border object-cover sm:max-w-[320px]" />
                 <Button type="button" variant="outline" size="sm" onClick={() => update('backgroundImageUrl', null)} disabled={loading}>
                   Quitar imagen de fondo
                 </Button>

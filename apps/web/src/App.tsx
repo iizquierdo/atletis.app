@@ -32,6 +32,7 @@ import { getClientModules } from './module-registry';
 import type { ModuleClientDefinition, ModuleRenderContext } from '@sinapsis/module-sdk-client';
 import AdminApp from './components/admin/AdminApp';
 import { buildViewRoutes, pathForView, viewForPath, type ViewRoute } from './lib/view-routes';
+import { assetUrl } from './lib/api-base';
 
 type PublicCorePayload = {
   appName: string;
@@ -264,7 +265,7 @@ const App: React.FC = () => {
     [publicCore?.appName]
   );
   const faviconHref = useMemo(
-    () => publicCore?.faviconUrl?.trim() || DEFAULT_FAVICON_PATH,
+    () => assetUrl(publicCore?.faviconUrl) || DEFAULT_FAVICON_PATH,
     [publicCore?.faviconUrl]
   );
   const faviconType = useMemo(() => faviconMimeForUrl(faviconHref), [faviconHref]);
@@ -729,7 +730,7 @@ const App: React.FC = () => {
                             activeModuleCodes={readableModuleCodes}
                             clientModules={ALL_CLIENT_MODULES}
                             sidebarBackgroundColor={publicCore?.sidebarBackgroundColor}
-                            sidebarLogoUrl={publicCore?.sidebarLogoUrl}
+                            sidebarLogoUrl={assetUrl(publicCore?.sidebarLogoUrl)}
                           />
                         }
                         header={
@@ -763,8 +764,8 @@ const App: React.FC = () => {
                 <AuthFlow
                   onLoginSuccess={handleLoginSuccess}
                   appName={displayAppName}
-                  logoUrl={publicCore?.logoUrl?.trim() || null}
-                  loginBackgroundUrl={publicCore?.loginBackgroundUrl?.trim() || null}
+                  logoUrl={assetUrl(publicCore?.logoUrl) || null}
+                  loginBackgroundUrl={assetUrl(publicCore?.loginBackgroundUrl) || null}
                 />
               )
             }

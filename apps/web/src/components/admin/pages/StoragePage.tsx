@@ -25,10 +25,11 @@ const isS3Like = (provider: UiProvider) => provider === 'S3' || provider === 'Ra
 /** Maps the UI form to the backend `{ provider, settings }` payload. */
 const toBackendValue = (form: StorageFormState): { provider: string; settings: Record<string, string | boolean> } => {
   if (form.provider === 'Railway') {
+    const { publicUrl: _publicUrl, ...settings } = form.settings;
     return {
       provider: 'S3',
       settings: {
-        ...form.settings,
+        ...settings,
         flavor: 'railway',
         forcePathStyle: form.settings.forcePathStyle === undefined ? true : form.settings.forcePathStyle
       }
@@ -285,9 +286,16 @@ const StoragePage: React.FC = () => {
                       value={String(form.settings.publicUrl || '')}
                       onChange={(e) => updateSetting('publicUrl', e.target.value)}
                       placeholder="https://cdn.example.com (leave empty to serve via the app)"
+                      disabled={form.provider === 'Railway'}
                     />
                     <p className="text-xs text-slate-500">
-                      When empty, files are served back through the app at <code>/storage/&lt;key&gt;</code> (no public bucket needed).
+                      {form.provider === 'Railway'
+                        ? 'Railway buckets are served through the app proxy at /storage/<key>; no public bucket URL is needed.'
+                        : (
+                            <>
+                              When empty, files are served back through the app at <code>/storage/&lt;key&gt;</code> (no public bucket needed).
+                            </>
+                          )}
                     </p>
                   </div>
                   <div className="flex items-center gap-2 md:col-span-2">

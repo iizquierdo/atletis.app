@@ -20,6 +20,12 @@ const rewrite = (url: string): string => {
 
 export const apiUrl = (path: string): string => (shouldRewrite(path) ? rewrite(path) : path);
 
+export const assetUrl = (url: string | null | undefined): string => {
+  const value = String(url || '').trim();
+  if (!value) return '';
+  return shouldRewrite(value) ? rewrite(value) : value;
+};
+
 let installed = false;
 
 export const installFetchRewrite = (): void => {

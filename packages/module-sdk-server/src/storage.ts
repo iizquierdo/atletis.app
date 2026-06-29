@@ -189,7 +189,8 @@ export interface PutObjectResult {
 export const objectUrl = (config: StorageConfig, key: string): string => {
   const k = normalizeKey(key);
   if (config.provider === 'S3') {
-    const base = String(config.settings.publicUrl || '').trim().replace(/\/+$/, '');
+    const isRailway = String(config.settings.flavor || '').trim().toLowerCase() === 'railway';
+    const base = isRailway ? '' : String(config.settings.publicUrl || '').trim().replace(/\/+$/, '');
     if (base) return `${base}/${k}`;
   }
   return `/storage/${k}`;
