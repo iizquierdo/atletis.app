@@ -744,7 +744,7 @@ const isOrgAdmin = async (poolRef: pg.Pool, userId: string): Promise<boolean> =>
 const assertCompanyInTenantScope = async (pool: pg.Pool, ctx: TenantAuthContext, companyId: string) => {
     const id = String(companyId || '').trim();
     if (!id) return false;
-    if (!userCanAccessCompany(ctx, id)) return false;
+    if (!(await isOrgAdmin(pool, ctx.userId)) && !userCanAccessCompany(ctx, id)) return false;
     return assertCompanyBelongsToOrg(pool, ctx.organizationId, id);
 };
 
@@ -2452,14 +2452,15 @@ app.post('/api/companies', async (req, res) => {
                  "updatedAt" = NOW()
              WHERE "companyId" IN (SELECT id FROM "Company" WHERE "organizationId" = $2)
                AND (
-                   LOWER(role) IN ('administrator', 'admin')
+                   id = $3
+                   OR LOWER(role) IN ('administrator', 'admin')
                    OR "roleId" IN (
                        SELECT id FROM "Role"
                            WHERE LOWER(name) IN ('super admin', 'administrador', 'administrator')
                    )
                )
                AND NOT ($1 = ANY(string_to_array(COALESCE(NULLIF("accessCompanyIds", ''), ''), ',')))`,
-            [newCompany.id, ctx.organizationId]
+            [newCompany.id, ctx.organizationId, ctx.userId]
         );
         await client.query('COMMIT');
         transactionOpen = false;
