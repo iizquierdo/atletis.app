@@ -26,7 +26,6 @@ const SettingsModule = lazy(() => import('./components/SettingsModule'));
 const InstallAppsPage = lazy(() => import('./components/InstallAppsPage'));
 import { ViewType, Customer, AppUser } from '@sinapsis/shared-types';
 import { CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area, XAxis, YAxis } from 'recharts';
-import { getBusinessAdvice } from './services/geminiService';
 import { useTranslation } from 'react-i18next';
 import { getClientModules } from './module-registry';
 import type { ModuleClientDefinition, ModuleRenderContext } from '@sinapsis/module-sdk-client';
@@ -51,6 +50,41 @@ type PublicCorePayload = {
   moneyFormat: string;
   currencyPosition: string;
   defaultLanguage: string;
+};
+
+type DashboardCard = {
+  key: string;
+  label: string;
+  value: string | number;
+  detail: string;
+  icon: string;
+  tone: 'blue' | 'emerald' | 'amber' | 'red' | 'cyan' | 'violet' | 'slate';
+  format?: 'currency';
+};
+
+type DashboardSummary = {
+  cards: DashboardCard[];
+  finance: {
+    monthlyIncome: number;
+    monthlyExpenses: number;
+    netMonth: number;
+    incomeSeries: Array<{ label: string; value: number }>;
+  };
+  operations: {
+    todayClasses: number;
+    activeStudents: number;
+    activeClasses: number;
+    pendingAttendance: number;
+    attendanceRate: number | null;
+    occupancyRate: number | null;
+  };
+  work: {
+    overdueTasks: number;
+    unreadMessages: number;
+    openOpportunities: number;
+    communityPostsWeek: number;
+  };
+  actions: string[];
 };
 
 const MOCK_REVENUE = [
@@ -153,7 +187,9 @@ const App: React.FC = () => {
   const [subTitle, setSubTitle] = useState<string>('');
   const [selectedCompanyId, setSelectedCompanyId] = useState<string>('org');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [aiAdvice, setAiAdvice] = useState<string>(t('dashboard.loadingAIAdvice'));
+  const [dashboardSummary, setDashboardSummary] = useState<DashboardSummary | null>(null);
+  const [dashboardLoading, setDashboardLoading] = useState(false);
+  const [dashboardError, setDashboardError] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<AppUser | undefined>(undefined);
   const [activeModuleCodes, setActiveModuleCodes] = useState<string[]>([]);
   const [publicCore, setPublicCore] = useState<PublicCorePayload | null>(null);
@@ -479,14 +515,41 @@ const App: React.FC = () => {
   ]);
 
   useEffect(() => {
-    if (isAuthenticated) {
-      const fetchAdvice = async () => {
-        const advice = await getBusinessAdvice('Current revenue is stable, but client Acme Corp has high potential. Inventory is at 80% capacity.');
-        setAiAdvice(advice || t('dashboard.noAdviceAvailable'));
-      };
-      fetchAdvice();
+    if (!isAuthenticated || !currentUser) {
+      setDashboardSummary(null);
+      return;
     }
-  }, [isAuthenticated, t]);
+
+    let cancelled = false;
+    const loadDashboard = async () => {
+      setDashboardLoading(true);
+      setDashboardError(null);
+      try {
+        const raw = localStorage.getItem(AUTH_STORAGE_KEY);
+        const token = raw ? JSON.parse(raw)?.token : '';
+        const params = new URLSearchParams();
+        if (selectedCompanyId && selectedCompanyId !== 'org') params.set('companyId', selectedCompanyId);
+        const res = await fetch(`/api/dashboard/summary${params.toString() ? `?${params.toString()}` : ''}`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : undefined
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data?.error || 'No se pudo cargar el dashboard');
+        if (!cancelled) setDashboardSummary(data as DashboardSummary);
+      } catch (error: unknown) {
+        if (!cancelled) {
+          setDashboardSummary(null);
+          setDashboardError(error instanceof Error ? error.message : 'No se pudo cargar el dashboard');
+        }
+      } finally {
+        if (!cancelled) setDashboardLoading(false);
+      }
+    };
+
+    void loadDashboard();
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, currentUser?.id, selectedCompanyId]);
 
   const handleLogout = async () => {
     try {
@@ -518,99 +581,169 @@ const App: React.FC = () => {
     );
   }
 
-  const renderDashboard = () => (
-    <div className="animate-in fade-in space-y-6 duration-500">
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
-        {[
-          { label: t('dashboard.totalRevenue'), value: '$128,430', change: '+12.5%', icon: 'fa-dollar-sign', color: 'text-emerald-600', bg: 'bg-emerald-500/10' },
-          { label: t('dashboard.activeClients'), value: '1,240', change: '+3.2%', icon: 'fa-user-check', color: 'text-blue-600', bg: 'bg-blue-500/10' },
-          { label: t('dashboard.pendingOrders'), value: '43', change: '-2.4%', icon: 'fa-clock', color: 'text-orange-600', bg: 'bg-orange-500/10' },
-          { label: t('dashboard.conversionRate'), value: '3.8%', change: '+0.5%', icon: 'fa-bullseye', color: 'text-primary', bg: 'bg-primary/10' },
-        ].map((stat, i) => (
-          <Card key={i} className="shadow-xs transition-shadow hover:shadow-md">
-            <CardContent className="pt-6">
-              <div className="mb-4 flex items-start justify-between">
-                <div className={`rounded-lg p-2 ${stat.bg} ${stat.color}`}>
-                  <i className={`fa-solid ${stat.icon}`}></i>
-                </div>
-                <span
-                  className={`rounded-full px-2 py-1 text-xs font-bold ${stat.change.startsWith('+') ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400' : 'bg-destructive/15 text-destructive'}`}
-                >
-                  {stat.change}
-                </span>
+  const formatCurrency = (value: number) =>
+    new Intl.NumberFormat(i18n.language || 'es', {
+      style: 'currency',
+      currency: publicCore?.baseCurrency || 'ARS',
+      maximumFractionDigits: 0
+    }).format(Number(value || 0));
+
+  const toneClasses: Record<DashboardCard['tone'], { icon: string; badge: string }> = {
+    blue: { icon: 'bg-blue-500/10 text-blue-600', badge: 'bg-blue-500/10 text-blue-700' },
+    emerald: { icon: 'bg-emerald-500/10 text-emerald-600', badge: 'bg-emerald-500/10 text-emerald-700' },
+    amber: { icon: 'bg-amber-500/10 text-amber-600', badge: 'bg-amber-500/10 text-amber-700' },
+    red: { icon: 'bg-red-500/10 text-red-600', badge: 'bg-red-500/10 text-red-700' },
+    cyan: { icon: 'bg-cyan-500/10 text-cyan-600', badge: 'bg-cyan-500/10 text-cyan-700' },
+    violet: { icon: 'bg-violet-500/10 text-violet-600', badge: 'bg-violet-500/10 text-violet-700' },
+    slate: { icon: 'bg-slate-500/10 text-slate-600', badge: 'bg-slate-500/10 text-slate-700' }
+  };
+
+  const renderDashboard = () => {
+    const series = dashboardSummary?.finance.incomeSeries?.length
+      ? dashboardSummary.finance.incomeSeries
+      : MOCK_REVENUE.map((row) => ({ label: row.name, value: 0 }));
+    const cards: DashboardCard[] = dashboardSummary?.cards || [
+      { key: 'loading-classes', label: 'Clases hoy', value: dashboardLoading ? '...' : 0, detail: 'Cargando agenda', icon: 'fa-calendar-day', tone: 'blue' },
+      { key: 'loading-students', label: 'Alumnos activos', value: dashboardLoading ? '...' : 0, detail: 'Cargando alumnos', icon: 'fa-person-swimming', tone: 'cyan' },
+      { key: 'loading-finance', label: 'Ingresos del mes', value: dashboardLoading ? '...' : 0, detail: 'Cargando finanzas', icon: 'fa-file-invoice-dollar', tone: 'emerald' }
+    ];
+
+    return (
+      <div className="animate-in fade-in space-y-6 duration-500">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h2 className="text-xl font-semibold text-foreground">Resumen operativo</h2>
+            <p className="text-sm text-muted-foreground">
+              {selectedCompanyId === 'org' ? 'Todas las sedes' : 'Sede seleccionada'} - datos consolidados de modulos activos
+            </p>
+          </div>
+          {dashboardLoading && <span className="text-xs font-medium text-muted-foreground">Actualizando...</span>}
+        </div>
+
+        {dashboardError && (
+          <Card className="border-red-200 bg-red-50">
+            <CardContent className="py-4 text-sm font-medium text-red-700">{dashboardError}</CardContent>
+          </Card>
+        )}
+
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {cards.map((stat) => {
+            const tone = toneClasses[stat.tone] || toneClasses.slate;
+            const value = stat.format === 'currency' && typeof stat.value === 'number'
+              ? formatCurrency(stat.value)
+              : stat.value;
+            return (
+              <Card key={stat.key} className="shadow-xs transition-shadow hover:shadow-md">
+                <CardContent className="pt-6">
+                  <div className="mb-4 flex items-start justify-between gap-3">
+                    <div className={`rounded-lg p-2 ${tone.icon}`}>
+                      <i className={`fa-solid ${stat.icon}`}></i>
+                    </div>
+                    <span className={`rounded-full px-2 py-1 text-xs font-bold ${tone.badge}`}>
+                      {stat.detail}
+                    </span>
+                  </div>
+                  <p className="text-muted-foreground text-sm font-medium">{stat.label}</p>
+                  <h3 className="text-foreground text-2xl font-bold">{value}</h3>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+
+        <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
+          <Card className="shadow-xs xl:col-span-2">
+            <CardHeader className="flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="normal-case">Ingresos emitidos - ultimos 7 dias</CardTitle>
+              <span className="text-sm font-semibold text-muted-foreground">
+                Neto mes {formatCurrency(dashboardSummary?.finance.netMonth || 0)}
+              </span>
+            </CardHeader>
+            <CardContent>
+              <div className="h-[300px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={series}>
+                    <defs>
+                      <linearGradient id="dashboardIncome" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="var(--primary)" stopOpacity={0.16} />
+                        <stop offset="95%" stopColor="var(--primary)" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
+                    <XAxis dataKey="label" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: 'var(--muted-foreground)' }} dy={10} />
+                    <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: 'var(--muted-foreground)' }} tickFormatter={(v) => formatCurrency(Number(v)).replace(/\s/g, '')} />
+                    <Tooltip
+                      formatter={(value) => [formatCurrency(Number(value)), 'Ingresos']}
+                      contentStyle={{
+                        backgroundColor: 'var(--card)',
+                        borderRadius: '8px',
+                        border: '1px solid var(--border)',
+                        boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)',
+                      }}
+                    />
+                    <Area type="monotone" dataKey="value" stroke="var(--primary)" strokeWidth={3} fillOpacity={1} fill="url(#dashboardIncome)" />
+                  </AreaChart>
+                </ResponsiveContainer>
               </div>
-              <p className="text-muted-foreground text-sm font-medium">{stat.label}</p>
-              <h3 className="text-foreground text-2xl font-bold">{stat.value}</h3>
             </CardContent>
           </Card>
-        ))}
-      </div>
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        <Card className="shadow-xs lg:col-span-2">
-          <CardHeader className="flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="normal-case">Revenue Overview</CardTitle>
-            <select className="border-input bg-background text-foreground rounded-md border px-2 py-1 text-sm outline-none">
-              <option>Last 7 days</option>
-              <option>Last 30 days</option>
-            </select>
-          </CardHeader>
-          <CardContent>
-            <div className="h-[300px] w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={MOCK_REVENUE}>
-                  <defs>
-                    <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#6366f1" stopOpacity={0.12} />
-                      <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
-                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: 'var(--muted-foreground)' }} dy={10} />
-                  <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: 'var(--muted-foreground)' }} />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: 'var(--card)',
-                      borderRadius: '12px',
-                      border: '1px solid var(--border)',
-                      boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)',
-                    }}
-                    itemStyle={{ color: '#6366f1', fontWeight: 'bold' }}
-                  />
-                  <Area type="monotone" dataKey="value" stroke="#6366f1" strokeWidth={3} fillOpacity={1} fill="url(#colorValue)" />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-primary text-primary-foreground border-primary shadow-lg">
-          <CardContent className="flex flex-col justify-between gap-6 pt-6">
-            <div>
-              <div className="mb-4 flex items-center gap-2">
-                <Wand2 className="size-4" />
-                <span className="text-xs font-bold uppercase tracking-wider">{t('dashboard.aiInsights')}</span>
+          <Card className="border-primary/20 bg-primary text-primary-foreground shadow-lg">
+            <CardContent className="flex h-full flex-col justify-between gap-6 pt-6">
+              <div>
+                <div className="mb-4 flex items-center gap-2">
+                  <Wand2 className="size-4" />
+                  <span className="text-xs font-bold uppercase tracking-wider">Foco de hoy</span>
+                </div>
+                <h4 className="mb-4 text-xl font-bold">Acciones que mueven la operacion</h4>
+                <div className="space-y-3 text-sm leading-relaxed opacity-95">
+                  {(dashboardSummary?.actions?.length ? dashboardSummary.actions : ['No hay alertas criticas. Revisa cupos, mensajes y vencimientos al cierre del dia.']).map((line, idx) => (
+                    <p key={idx} className="flex gap-2">
+                      <span className="opacity-60">-</span> {line}
+                    </p>
+                  ))}
+                </div>
               </div>
-              <h4 className="mb-4 text-xl font-bold italic">&quot;Transforming data into strategy&quot;</h4>
-              <div className="space-y-4 text-sm leading-relaxed opacity-90">
-                {aiAdvice.split('\n').map((line, idx) => (
-                  <p key={idx} className="flex gap-2">
-                    <span className="opacity-60">-</span> {line}
-                  </p>
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+          {[
+            { label: 'Operacion', rows: [
+              ['Clases activas', dashboardSummary?.operations.activeClasses ?? 0],
+              ['Asistencia pendiente', dashboardSummary?.operations.pendingAttendance ?? 0],
+              ['Ocupacion', dashboardSummary?.operations.occupancyRate == null ? 'Sin cupos' : `${dashboardSummary.operations.occupancyRate}%`]
+            ] },
+            { label: 'Finanzas', rows: [
+              ['Ingresos mes', formatCurrency(dashboardSummary?.finance.monthlyIncome || 0)],
+              ['Gastos mes', formatCurrency(dashboardSummary?.finance.monthlyExpenses || 0)],
+              ['Neto mes', formatCurrency(dashboardSummary?.finance.netMonth || 0)]
+            ] },
+            { label: 'Seguimiento', rows: [
+              ['Tareas vencidas', dashboardSummary?.work.overdueTasks ?? 0],
+              ['Mensajes sin leer', dashboardSummary?.work.unreadMessages ?? 0],
+              ['Posts comunidad 7d', dashboardSummary?.work.communityPostsWeek ?? 0]
+            ] }
+          ].map((section) => (
+            <Card key={section.label}>
+              <CardHeader className="min-h-0 py-4">
+                <CardTitle className="normal-case text-sm font-semibold">{section.label}</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {section.rows.map(([label, value]) => (
+                  <div key={label} className="flex items-center justify-between border-b border-border/60 pb-2 last:border-0 last:pb-0">
+                    <span className="text-sm text-muted-foreground">{label}</span>
+                    <span className="text-sm font-semibold text-foreground">{value}</span>
+                  </div>
                 ))}
-              </div>
-            </div>
-            <button
-              type="button"
-              className="hover:bg-primary-foreground/15 w-full rounded-xl border border-primary-foreground/20 py-3 font-semibold transition-colors"
-            >
-              {t('dashboard.generateReport')}
-            </button>
-          </CardContent>
-        </Card>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   const renderAuthenticatedBody = (
     currentView: ViewType,

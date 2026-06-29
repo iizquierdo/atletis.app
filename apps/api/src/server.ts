@@ -740,6 +740,280 @@ const assertCompanyInTenantScope = async (pool: pg.Pool, ctx: TenantAuthContext,
     return assertCompanyBelongsToOrg(pool, ctx.organizationId, id);
 };
 
+const dashboardTableExists = async (tableName: string): Promise<boolean> => {
+    const r = await pool.query('SELECT to_regclass($1) AS table_name', [`public."${tableName}"`]);
+    return Boolean(r.rows[0]?.table_name);
+};
+
+const dashboardNumber = async (sql: string, params: unknown[] = []): Promise<number> => {
+    const r = await pool.query(sql, params);
+    const row = r.rows[0] || {};
+    const raw = row.value ?? row.count ?? row.total ?? Object.values(row)[0] ?? 0;
+    const n = Number(raw);
+    return Number.isFinite(n) ? n : 0;
+};
+
+const dashboardSeries = async (sql: string, params: unknown[] = []): Promise<Array<{ label: string; value: number }>> => {
+    const r = await pool.query(sql, params);
+    return r.rows.map((row) => ({
+        label: String(row.label || ''),
+        value: Number(row.value || 0)
+    }));
+};
+
+app.get('/api/dashboard/summary', async (req, res) => {
+    try {
+        const ctx = await loadTenantAuthContext(req, res);
+        if (!ctx) return;
+
+        const requestedCompanyId = String(req.query.companyId || '').trim();
+        const companyId = requestedCompanyId && requestedCompanyId !== 'org' ? requestedCompanyId : '';
+        if (companyId && !(await assertCompanyInTenantScope(pool, ctx, companyId))) {
+            return res.status(400).json({ error: 'companyId is not part of your organization.' });
+        }
+
+        const scopeParams: unknown[] = [ctx.organizationId];
+        let companyScope = 'c."organizationId" = $1';
+        if (companyId) {
+            scopeParams.push(companyId);
+            companyScope += ` AND c.id = $${scopeParams.length}`;
+        } else {
+            const accessible = (await isOrgAdmin(pool, ctx.userId)) ? [] : accessibleCompanyIdsForUser(ctx);
+            if (accessible.length) {
+                scopeParams.push(accessible);
+                companyScope += ` AND c.id = ANY($${scopeParams.length})`;
+            }
+        }
+
+        const dayOfWeek = new Date().getDay();
+        const hasStudents = await dashboardTableExists('Student');
+        const hasClasses = await dashboardTableExists('Class');
+        const hasClassSchedule = await dashboardTableExists('ClassSchedule');
+        const hasClassStudent = await dashboardTableExists('ClassStudent');
+        const hasAttendance = await dashboardTableExists('ClassAttendance');
+        const hasFinancial = await dashboardTableExists('FinancialDocument');
+        const hasExpenses = await dashboardTableExists('Expense');
+        const hasTasks = await dashboardTableExists('Task');
+        const hasMessages = await dashboardTableExists('Message');
+        const hasConversations = await dashboardTableExists('Conversation');
+        const hasCrm = await dashboardTableExists('CrmOpportunity');
+        const hasCommunityPosts = await dashboardTableExists('CommunityPost');
+
+        const activeStudents = hasStudents
+            ? await dashboardNumber(
+                `SELECT COUNT(*)::int AS value FROM "Student" s JOIN "Company" c ON c.id = s."companyId" WHERE ${companyScope} AND UPPER(s.status) = 'ACTIVE'`,
+                scopeParams
+            )
+            : 0;
+        const activeClasses = hasClasses
+            ? await dashboardNumber(
+                `SELECT COUNT(*)::int AS value FROM "Class" cl JOIN "Company" c ON c.id = cl."companyId" WHERE ${companyScope} AND UPPER(cl.status) = 'ACTIVE'`,
+                scopeParams
+            )
+            : 0;
+        const todayClasses = hasClasses && hasClassSchedule
+            ? await dashboardNumber(
+                `SELECT COUNT(DISTINCT cl.id)::int AS value
+                   FROM "Class" cl
+                   JOIN "Company" c ON c.id = cl."companyId"
+                   JOIN "ClassSchedule" cs ON cs."classId" = cl.id
+                  WHERE ${companyScope} AND UPPER(cl.status) = 'ACTIVE' AND cs."dayOfWeek" = $${scopeParams.length + 1}`,
+                [...scopeParams, dayOfWeek]
+            )
+            : 0;
+        const expectedAttendance = hasClasses && hasClassSchedule && hasClassStudent
+            ? await dashboardNumber(
+                `SELECT COUNT(*)::int AS value
+                   FROM "Class" cl
+                   JOIN "Company" c ON c.id = cl."companyId"
+                   JOIN "ClassSchedule" sch ON sch."classId" = cl.id
+                   JOIN "ClassStudent" st ON st."classId" = cl.id AND UPPER(st.status) = 'ACTIVE'
+                  WHERE ${companyScope} AND UPPER(cl.status) = 'ACTIVE' AND sch."dayOfWeek" = $${scopeParams.length + 1}`,
+                [...scopeParams, dayOfWeek]
+            )
+            : 0;
+        const recordedAttendance = hasAttendance && hasClasses
+            ? await dashboardNumber(
+                `SELECT COUNT(*)::int AS value
+                   FROM "ClassAttendance" a
+                   JOIN "Class" cl ON cl.id = a."classId"
+                   JOIN "Company" c ON c.id = cl."companyId"
+                  WHERE ${companyScope} AND a."date"::date = CURRENT_DATE`,
+                scopeParams
+            )
+            : 0;
+        const presentToday = hasAttendance && hasClasses
+            ? await dashboardNumber(
+                `SELECT COUNT(*)::int AS value
+                   FROM "ClassAttendance" a
+                   JOIN "Class" cl ON cl.id = a."classId"
+                   JOIN "Company" c ON c.id = cl."companyId"
+                  WHERE ${companyScope} AND a."date"::date = CURRENT_DATE AND a.present = true`,
+                scopeParams
+            )
+            : 0;
+        const capacity = hasClasses
+            ? await pool.query(
+                `SELECT COALESCE(SUM(cl.capacity), 0)::int AS capacity
+                   FROM "Class" cl JOIN "Company" c ON c.id = cl."companyId"
+                  WHERE ${companyScope} AND UPPER(cl.status) = 'ACTIVE'`,
+                scopeParams
+            ).then((r) => Number(r.rows[0]?.capacity || 0))
+            : 0;
+        const enrolled = hasClasses && hasClassStudent
+            ? await dashboardNumber(
+                `SELECT COUNT(*)::int AS value
+                   FROM "ClassStudent" st
+                   JOIN "Class" cl ON cl.id = st."classId"
+                   JOIN "Company" c ON c.id = cl."companyId"
+                  WHERE ${companyScope} AND UPPER(cl.status) = 'ACTIVE' AND UPPER(st.status) = 'ACTIVE'`,
+                scopeParams
+            )
+            : 0;
+        const monthlyIncome = hasFinancial
+            ? await dashboardNumber(
+                `SELECT COALESCE(SUM(CASE WHEN d.type IN ('Invoice', 'Receipt', 'Debit Memo') THEN d."totalAmount" WHEN d.type = 'Credit Memo' THEN -d."totalAmount" ELSE 0 END), 0) AS value
+                   FROM "FinancialDocument" d
+                   JOIN "Company" c ON c.id = d."companyId"
+                  WHERE ${companyScope} AND COALESCE(d."issueDate", d."createdAt") >= date_trunc('month', CURRENT_DATE)
+                    AND d.status NOT IN ('Cancelled', 'Void', 'Draft')`,
+                scopeParams
+            )
+            : 0;
+        const overdueDocuments = hasFinancial
+            ? await dashboardNumber(
+                `SELECT COUNT(*)::int AS value
+                   FROM "FinancialDocument" d
+                   JOIN "Company" c ON c.id = d."companyId"
+                  WHERE ${companyScope} AND d."dueDate"::date < CURRENT_DATE AND d.status NOT IN ('Paid', 'Cancelled', 'Void')`,
+                scopeParams
+            )
+            : 0;
+        const monthlyExpenses = hasExpenses
+            ? await dashboardNumber(
+                `SELECT COALESCE(SUM(e."amountBase"), 0) AS value
+                   FROM "Expense" e
+                   JOIN "Company" c ON c.id = e."companyId"
+                  WHERE ${companyScope} AND e."expenseDate" >= date_trunc('month', CURRENT_DATE) AND e.status NOT IN ('Cancelled', 'Void')`,
+                scopeParams
+            )
+            : 0;
+        const overdueTasks = hasTasks
+            ? await dashboardNumber(
+                `SELECT COUNT(*)::int AS value
+                   FROM "Task" t
+                   JOIN "Company" c ON c.id = t."companyId"
+                  WHERE ${companyScope} AND t."dueDate"::date < CURRENT_DATE AND UPPER(t.status) NOT IN ('DONE', 'COMPLETED', 'CANCELLED')`,
+                scopeParams
+            )
+            : 0;
+        const unreadMessages = hasMessages && hasConversations
+            ? await dashboardNumber(
+                `SELECT COUNT(*)::int AS value
+                   FROM "Message" m
+                   JOIN "Conversation" conv ON conv.id = m."conversationId"
+                   JOIN "Student" s ON s.id = conv."studentId"
+                   JOIN "Company" c ON c.id = s."companyId"
+                  WHERE ${companyScope} AND m."senderId" <> $${scopeParams.length + 1}
+                    AND NOT EXISTS (SELECT 1 FROM "MessageRead" mr WHERE mr."messageId" = m.id AND mr."userId" = $${scopeParams.length + 1})`,
+                [...scopeParams, ctx.userId]
+            )
+            : 0;
+        const openOpportunities = hasCrm
+            ? await dashboardNumber(
+                `SELECT COUNT(*)::int AS value
+                   FROM "CrmOpportunity" o
+                   JOIN "Company" c ON c.id = o."companyId"
+                  WHERE ${companyScope} AND UPPER(o.status) = 'OPEN'`,
+                scopeParams
+            )
+            : 0;
+        const communityPostsWeek = hasCommunityPosts
+            ? await dashboardNumber(
+                `SELECT COUNT(*)::int AS value
+                   FROM "CommunityPost" p
+                   JOIN "Community" cm ON cm.id = p."communityId"
+                   JOIN "Company" c ON c.id = cm."companyId"
+                  WHERE ${companyScope} AND p."createdAt" >= CURRENT_DATE - INTERVAL '7 days'`,
+                scopeParams
+            )
+            : 0;
+        const incomeSeries = hasFinancial
+            ? await dashboardSeries(
+                `SELECT to_char(day, 'DD/MM') AS label, COALESCE(SUM(scoped.amount), 0)::float AS value
+                   FROM generate_series(CURRENT_DATE - INTERVAL '6 days', CURRENT_DATE, INTERVAL '1 day') day
+                   LEFT JOIN (
+                     SELECT COALESCE(d."issueDate", d."createdAt")::date AS doc_date,
+                            CASE WHEN d.type IN ('Invoice', 'Receipt', 'Debit Memo') THEN d."totalAmount"
+                                 WHEN d.type = 'Credit Memo' THEN -d."totalAmount"
+                                 ELSE 0 END AS amount
+                       FROM "FinancialDocument" d
+                       JOIN "Company" c ON c.id = d."companyId"
+                      WHERE ${companyScope} AND d.status NOT IN ('Cancelled', 'Void', 'Draft')
+                   ) scoped ON scoped.doc_date = day::date
+                  GROUP BY day ORDER BY day`,
+                scopeParams
+            )
+            : [];
+
+        const attendanceRate = recordedAttendance > 0 ? Math.round((presentToday / recordedAttendance) * 100) : null;
+        const occupancyRate = capacity > 0 ? Math.round((enrolled / capacity) * 100) : null;
+        const pendingAttendance = Math.max(expectedAttendance - recordedAttendance, 0);
+        const netMonth = monthlyIncome - monthlyExpenses;
+        const actions = [
+            pendingAttendance > 0 ? `${pendingAttendance} asistencias de hoy sin registrar` : null,
+            overdueDocuments > 0 ? `${overdueDocuments} documentos financieros vencidos` : null,
+            overdueTasks > 0 ? `${overdueTasks} tareas vencidas` : null,
+            unreadMessages > 0 ? `${unreadMessages} mensajes pendientes de lectura` : null,
+            occupancyRate !== null && occupancyRate >= 90 ? `Ocupacion alta: ${occupancyRate}% de cupos activos` : null,
+            openOpportunities > 0 ? `${openOpportunities} oportunidades abiertas en CRM` : null
+        ].filter(Boolean);
+
+        res.json({
+            generatedAt: new Date().toISOString(),
+            companyId: companyId || null,
+            cards: [
+                { key: 'todayClasses', label: 'Clases hoy', value: todayClasses, detail: `${expectedAttendance} asistencias esperadas`, icon: 'fa-calendar-day', tone: 'blue' },
+                { key: 'attendance', label: 'Asistencia tomada', value: attendanceRate == null ? 'Sin registros' : `${attendanceRate}%`, detail: `${recordedAttendance}/${expectedAttendance || 0} registros de hoy`, icon: 'fa-clipboard-check', tone: pendingAttendance > 0 ? 'amber' : 'emerald' },
+                { key: 'activeStudents', label: 'Alumnos activos', value: activeStudents, detail: `${enrolled} inscripciones en ${activeClasses} clases`, icon: 'fa-person-swimming', tone: 'cyan' },
+                { key: 'occupancy', label: 'Ocupacion clases', value: occupancyRate == null ? 'Sin cupos' : `${occupancyRate}%`, detail: `${enrolled}/${capacity || 0} cupos ocupados`, icon: 'fa-chart-pie', tone: occupancyRate !== null && occupancyRate >= 90 ? 'amber' : 'violet' },
+                { key: 'monthlyIncome', label: 'Ingresos del mes', value: monthlyIncome, detail: `Neto estimado: ${netMonth}`, icon: 'fa-file-invoice-dollar', tone: 'emerald', format: 'currency' },
+                { key: 'overdue', label: 'Atencion requerida', value: overdueDocuments + overdueTasks + unreadMessages, detail: `${overdueDocuments} vencidos - ${overdueTasks} tareas - ${unreadMessages} mensajes`, icon: 'fa-triangle-exclamation', tone: overdueDocuments + overdueTasks + unreadMessages > 0 ? 'red' : 'slate' }
+            ],
+            operations: {
+                todayClasses,
+                activeStudents,
+                activeClasses,
+                expectedAttendance,
+                recordedAttendance,
+                presentToday,
+                pendingAttendance,
+                attendanceRate,
+                enrolled,
+                capacity,
+                occupancyRate
+            },
+            finance: {
+                monthlyIncome,
+                monthlyExpenses,
+                netMonth,
+                overdueDocuments,
+                incomeSeries
+            },
+            work: {
+                overdueTasks,
+                unreadMessages,
+                openOpportunities,
+                communityPostsWeek
+            },
+            actions
+        });
+    } catch (error: any) {
+        console.error('Error loading dashboard summary:', error?.message || error);
+        res.status(500).json({ error: 'Failed to load dashboard summary', details: error?.message || String(error) });
+    }
+});
+
 const MODULE_PERMISSION_BY_METHOD: Record<string, 'canRead' | 'canCreate' | 'canWrite' | 'canDelete' | null> = {
     GET: 'canRead',
     POST: 'canCreate',
