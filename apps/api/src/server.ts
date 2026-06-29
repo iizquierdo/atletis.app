@@ -2374,6 +2374,7 @@ app.post('/api/companies', async (req, res) => {
     if (!ctx) return;
 
     const client = await pool.connect();
+    let transactionOpen = false;
     try {
         await ensureCompanyZipcodeColumn();
         const body = (req.body || {}) as Record<string, unknown>;
@@ -2431,34 +2432,46 @@ app.post('/api/companies', async (req, res) => {
         const query = `INSERT INTO "Company" (${columns}, "createdAt", "updatedAt") VALUES (${placeholders}, NOW(), NOW()) RETURNING *`;
 
         await client.query('BEGIN');
+        transactionOpen = true;
         const result = await client.query(query, values);
         const newCompany = result.rows[0];
         await cloneAllCoreReferencesToCompany(client, newCompany.id);
-        await client.query('COMMIT');
 
-        // Auto-grant org admins access to the new company
-        await pool.query(
+        // accessCompanyIds is stored as comma-separated TEXT by the user routes.
+        // Keep this update in the same format to avoid text/text[] coercion errors.
+        await client.query(
             `UPDATE "User"
-             SET "accessCompanyIds" = array_append(COALESCE("accessCompanyIds", ARRAY[]::text[]), $1),
+             SET "accessCompanyIds" = array_to_string(
+                     ARRAY(
+                         SELECT DISTINCT access_id
+                           FROM unnest(array_append(string_to_array(COALESCE(NULLIF("accessCompanyIds", ''), ''), ','), $1)) AS ids(access_id)
+                          WHERE access_id <> ''
+                     ),
+                     ','
+                 ),
                  "updatedAt" = NOW()
              WHERE "companyId" IN (SELECT id FROM "Company" WHERE "organizationId" = $2)
                AND (
                    LOWER(role) IN ('administrator', 'admin')
                    OR "roleId" IN (
                        SELECT id FROM "Role"
-                       WHERE LOWER(name) IN ('super admin', 'administrador', 'administrator')
+                           WHERE LOWER(name) IN ('super admin', 'administrador', 'administrator')
                    )
                )
-               AND NOT (COALESCE("accessCompanyIds", ARRAY[]::text[]) @> ARRAY[$1]::text[])`,
+               AND NOT ($1 = ANY(string_to_array(COALESCE(NULLIF("accessCompanyIds", ''), ''), ',')))`,
             [newCompany.id, ctx.organizationId]
         );
+        await client.query('COMMIT');
+        transactionOpen = false;
 
         res.json(newCompany);
     } catch (error: any) {
-        try {
-            await client.query('ROLLBACK');
-        } catch {
-            /* ignore */
+        if (transactionOpen) {
+            try {
+                await client.query('ROLLBACK');
+            } catch {
+                /* ignore */
+            }
         }
         console.error('Error creating company:', error);
         // 23505 = unique_violation (Postgres). Most likely a duplicate company code.
