@@ -5,9 +5,9 @@ import { MaterialIcon } from "../components/MaterialIcon";
 import { StudentAvatar } from "../components/StudentAvatar";
 import { useAuth } from "../context/AuthContext";
 import { useStudents } from "../context/StudentContext";
-import { searchStudentByDni, linkStudentToTutor, fetchStudentWeeklyAttendance } from "../lib/data";
+import { searchStudentByDni, linkStudentToTutor, fetchStudentWeeklyAttendance, fetchStudentObjectives } from "../lib/data";
 import { extractErrorMessage } from "../lib/api";
-import type { ClassScheduleSlot, StudentDiscipline, StudentSummary } from "../types";
+import type { ClassScheduleSlot, StudentDiscipline, StudentSummary, StudentObjectiveProgress } from "../types";
 
 
 const getDisciplineIcon = (name: string) => {
@@ -99,6 +99,7 @@ export const ResumenPage = () => {
     null
   );
   const [attendanceLoading, setAttendanceLoading] = useState(false);
+  const [objectives, setObjectives] = useState<StudentObjectiveProgress[]>([]);
   const dniInputRef = useRef<HTMLInputElement>(null);
 
   const openModal = () => {
@@ -300,8 +301,20 @@ export const ResumenPage = () => {
   const classesAttended = attendance?.present ?? 0;
   const classesTotal = attendance?.total ?? 0;
   const streakWeeks = 0;
-  const levelOrder = primaryDiscipline?.level?.levelOrder ?? null;
+  const primaryClass = activeClasses[0] ?? null;
+  // Show the student's class level (falls back to the discipline level).
+  const levelLabel =
+    primaryClass?.levelName ??
+    (primaryClass?.levelOrder != null ? `Nivel ${primaryClass.levelOrder}` : null) ??
+    (primaryDiscipline?.level?.name ?? null) ??
+    (primaryDiscipline?.level?.levelOrder != null ? `Nivel ${primaryDiscipline.level.levelOrder}` : null) ??
+    "—";
   const tutorName = user?.firstName?.trim() || "tutor";
+
+  // Average completion across the objectives of the student's level.
+  const objectivesProgress = objectives.length
+    ? Math.round(objectives.reduce((sum, o) => sum + o.progress, 0) / objectives.length)
+    : 0;
 
   useEffect(() => {
     if (!hasRealData || !activeStudent?.id || activityCount === 0) {
@@ -323,6 +336,20 @@ export const ResumenPage = () => {
       cancelled = true;
     };
   }, [hasRealData, activeStudent?.id, activityCount]);
+
+  useEffect(() => {
+    if (!activeStudent?.id) {
+      setObjectives([]);
+      return;
+    }
+    let cancelled = false;
+    void fetchStudentObjectives(activeStudent.id).then((result) => {
+      if (!cancelled) setObjectives(result);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeStudent?.id]);
 
   if (loading && !activeStudent) {
     return (
@@ -451,7 +478,7 @@ export const ResumenPage = () => {
               {[
                 { value: activityCount, label: showingClasses ? "Clases" : "Disciplinas" },
                 { value: streakWeeks, label: "Sem. activo" },
-                { value: levelOrder ?? "—", label: "Nivel" }
+                { value: levelLabel, label: "Nivel" }
               ].map((kpi) => (
                 <div key={kpi.label} className="flex-1 text-center">
                   <strong className="block text-2xl font-bold">{kpi.value}</strong>
@@ -479,14 +506,19 @@ export const ResumenPage = () => {
           </div>
         )}
 
-        {/* Streak */}
+        {/* Student progress (avg. of level objectives) */}
         {activityCount > 0 && (
-          <div className="rounded-3xl bg-amber-50 p-4">
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-amber-500">
-              Racha
+          <div className="rounded-3xl bg-purple-50 p-4">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-purple-500">
+              Progreso
             </p>
-            <strong className="mt-2 block text-3xl font-bold text-slate-900">{streakWeeks}</strong>
-            <p className="mt-1 text-xs text-slate-500">semanas activo</p>
+            <strong className="mt-2 block text-3xl font-bold text-slate-900">{objectivesProgress}%</strong>
+            <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-purple-200">
+              <div
+                className="h-full rounded-full bg-purple-500 transition-all duration-700"
+                style={{ width: `${objectivesProgress}%` }}
+              />
+            </div>
           </div>
         )}
 

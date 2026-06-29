@@ -75,21 +75,21 @@ export const NivelesPage = () => {
   }, [athlete?.id]);
 
   const activeDisciplines = useMemo(
-    () => (athlete.disciplines ?? []).filter(isActiveDiscipline),
-    [athlete.disciplines]
+    () => (athlete?.disciplines ?? []).filter(isActiveDiscipline),
+    [athlete?.disciplines]
   );
 
   const activeClasses = useMemo(
-    () => (athlete.classes ?? []).filter((c) => c.status === "ACTIVE"),
-    [athlete.classes]
+    () => (athlete?.classes ?? []).filter((c) => c.status === "ACTIVE"),
+    [athlete?.classes]
   );
 
   const levelCards = useMemo((): LevelCardItem[] => {
     if (activeClasses.length > 0) {
       return activeClasses.map(mapClassToCard);
     }
-    return activeDisciplines.map((item) => mapDisciplineToCard(item, athlete.teachers ?? []));
-  }, [activeClasses, activeDisciplines, athlete.teachers]);
+    return activeDisciplines.map((item) => mapDisciplineToCard(item, athlete?.teachers ?? []));
+  }, [activeClasses, activeDisciplines, athlete?.teachers]);
 
   const primaryCard = levelCards[0] ?? null;
   const levelName = primaryCard?.levelName ?? "En Preparación";

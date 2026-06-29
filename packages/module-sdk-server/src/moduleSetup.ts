@@ -234,10 +234,13 @@ export const resolveRequesterScope = async (pool: PgExec, userId: string): Promi
   const roleName = String(row.roleName || '').trim();
   const legacyLower = legacyRole.toLowerCase();
   const isLegacyAdmin = legacyLower === 'administrator' || legacyLower === 'admin';
+  const isLegacyAdminSede = legacyLower === NATACION_ROLES.ADMIN_SEDE.toLowerCase();
+  const isLegacyProfesor = legacyLower === NATACION_ROLES.PROFESOR.toLowerCase() || legacyLower === 'professor';
+  const isLegacyTutor = legacyLower === NATACION_ROLES.TUTOR.toLowerCase();
   const isSuperAdmin = isLegacyAdmin || roleName === NATACION_ROLES.SUPER_ADMIN;
-  const isAdminSede = roleName === NATACION_ROLES.ADMIN_SEDE;
-  const isProfesor = roleName === NATACION_ROLES.PROFESOR;
-  const isTutor = roleName === NATACION_ROLES.TUTOR;
+  const isAdminSede = isLegacyAdminSede || roleName === NATACION_ROLES.ADMIN_SEDE;
+  const isProfesor = isLegacyProfesor || roleName === NATACION_ROLES.PROFESOR;
+  const isTutor = isLegacyTutor || roleName === NATACION_ROLES.TUTOR;
   const primaryCompanyId = row.companyId ? String(row.companyId) : null;
   const organizationId = row.organizationId ? String(row.organizationId) : null;
   const accessCompanyIds = parseAccessCompanyIds(row.accessCompanyIdsRaw);

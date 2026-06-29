@@ -1066,7 +1066,9 @@ export default function registerStudentsModule({ app, pool }: StudentsModuleCont
     try {
       if (!(await ensureActive())) return res.status(409).json({ error: 'Students module is not active.' });
       const scope = await scopeOf(req);
-      if (!scope?.isStaff) return res.status(403).json({ error: 'Only staff can update objective progress.' });
+      if (!scope || (!scope.isStaff && !scope.isProfesor)) {
+        return res.status(403).json({ error: 'Only staff or assigned teachers can update objective progress.' });
+      }
       if (!(await canAccessStudent(scope, req.params.id))) return res.status(403).json({ error: 'Student out of scope.' });
       await ensureObjectiveProgressTable();
 

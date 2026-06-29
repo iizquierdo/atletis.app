@@ -12,14 +12,19 @@ const parseAllowedHosts = (raw: string | undefined): true | string[] => {
   return list.length ? list : true;
 };
 
+const withDefaultAllowedHosts = (allowedHosts: true | string[]): true | string[] => {
+  if (allowedHosts === true) return true;
+  return Array.from(new Set([...allowedHosts, 'demo.atletis.app', 'admin.demo.atletis.app']));
+};
+
 const resolveAllowedHosts = (env: Record<string, string>): true | string[] => {
   // loadEnv only reads .env files — merge process.env for Railway/runtime injection.
   const fromEnv = process.env.VITE_ALLOWED_HOSTS ?? env.VITE_ALLOWED_HOSTS;
-  if (fromEnv?.trim()) return parseAllowedHosts(fromEnv);
+  if (fromEnv?.trim()) return withDefaultAllowedHosts(parseAllowedHosts(fromEnv));
 
   const railwayDomain = process.env.RAILWAY_PUBLIC_DOMAIN?.trim();
   if (process.env.RAILWAY_ENVIRONMENT || railwayDomain) {
-    return railwayDomain ? [railwayDomain, '.up.railway.app'] : true;
+    return railwayDomain ? withDefaultAllowedHosts([railwayDomain, '.up.railway.app']) : true;
   }
 
   return true;

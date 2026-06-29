@@ -89,20 +89,10 @@ const fetchAvatarFromUsersList = async (userId: string): Promise<string | null> 
 
 /** Fills avatarUrl when the auth payload omits it or stores only a bare storage key. */
 export const enrichAuthUser = async (user: AuthUser): Promise<AuthUser> => {
-  if (user.role === "PROFESOR") {
-    try {
-      const { data } = await api.get<Record<string, unknown>>(`/teachers/${user.id}`);
-      const fromTeacher = readAvatarFromRecord(data);
-      if (fromTeacher) return { ...user, avatarUrl: fromTeacher };
-    } catch {
-      // teacher profile unavailable
-    }
-  }
-
   const resolved = user.avatarUrl ? resolveMediaUrl(user.avatarUrl) : null;
   if (resolved) return { ...user, avatarUrl: resolved };
 
-  const fromUsers = await fetchAvatarFromUsersList(user.id);
+  const fromUsers = user.role === "PROFESOR" ? null : await fetchAvatarFromUsersList(user.id);
   if (fromUsers) return { ...user, avatarUrl: fromUsers };
 
   const filePhoto = await fetchUserPhotoFromFiles(user.id);
