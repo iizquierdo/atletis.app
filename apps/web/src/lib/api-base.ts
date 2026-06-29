@@ -23,6 +23,9 @@ export const apiUrl = (path: string): string => (shouldRewrite(path) ? rewrite(p
 export const assetUrl = (url: string | null | undefined): string => {
   const value = String(url || '').trim();
   if (!value) return '';
+  if (value.startsWith('/storage/') || value === '/storage') {
+    return rewrite(`/api${value}`);
+  }
   return shouldRewrite(value) ? rewrite(value) : value;
 };
 

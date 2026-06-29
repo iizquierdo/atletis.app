@@ -73,8 +73,7 @@ app.get('/api/health', (_req, res) => {
 // is S3, objects are not on disk, so static() falls through (next()) and the
 // handler below streams them from the bucket — keeping `/storage/<key>` URLs
 // valid regardless of the configured backend.
-app.use('/storage', express.static(STORAGE_ROOT));
-app.get(/^\/storage\/(.+)/, async (req, res) => {
+const serveStorageObject = async (req: express.Request, res: express.Response) => {
     try {
         const key = decodeURIComponent(req.params[0] || '');
         if (!key || key.includes('..')) return res.status(400).end();
@@ -89,7 +88,12 @@ app.get(/^\/storage\/(.+)/, async (req, res) => {
         console.error('Error serving storage object from S3:', error?.message || error);
         if (!res.headersSent) res.status(500).end();
     }
-});
+};
+
+app.use('/storage', express.static(STORAGE_ROOT));
+app.use('/api/storage', express.static(STORAGE_ROOT));
+app.get(/^\/storage\/(.+)/, serveStorageObject);
+app.get(/^\/api\/storage\/(.+)/, serveStorageObject);
 
 app.get('/api/public/core', async (req, res) => {
   try {
