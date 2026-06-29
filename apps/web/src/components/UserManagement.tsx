@@ -25,6 +25,7 @@ import { DataGridColumnHeader } from '@/components/ui/data-grid-column-header';
 import { DataGridTable } from '@/components/ui/data-grid-table';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
+import { filterTenantRoles, tenantRoleDisplayName } from '@/lib/tenant-roles';
 
 interface UserManagementProps {
   companyFilter?: string;
@@ -94,7 +95,7 @@ const UserManagement: React.FC<UserManagementProps> = ({ companyFilter, onSelect
       const res = await fetch('/api/roles');
       if (res.ok) {
         const data = await res.json();
-        setAvailableRoles(data);
+        setAvailableRoles(filterTenantRoles(Array.isArray(data) ? data : []));
       }
     } catch (error) {
       console.error('Error fetching roles:', error);
@@ -428,7 +429,7 @@ const UserManagement: React.FC<UserManagementProps> = ({ companyFilter, onSelect
                     <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Rol</label>
                     <select value={userForm.roleId} onChange={e => { const r = availableRoles.find(role => role.id === e.target.value); setUserForm(p => ({ ...p, roleId: e.target.value, role: r?.name || p.role })); }} className="w-full px-4 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-red-400 focus:ring-1 focus:ring-red-400 transition-all font-medium">
                       <option value="">Seleccionar rol</option>
-                      {availableRoles.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+                      {availableRoles.map(r => <option key={r.id} value={r.id}>{tenantRoleDisplayName(r)}</option>)}
                     </select>
                   </div>
                   <div className="space-y-1.5">
@@ -608,7 +609,7 @@ const UserManagement: React.FC<UserManagementProps> = ({ companyFilter, onSelect
                     className="w-full px-4 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-red-400 focus:ring-1 focus:ring-red-400 transition-all font-medium"
                   >
                     <option value="">Seleccionar rol</option>
-                    {availableRoles.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+                    {availableRoles.map(r => <option key={r.id} value={r.id}>{tenantRoleDisplayName(r)}</option>)}
                   </select>
                 </div>
                 <div className="space-y-1.5">

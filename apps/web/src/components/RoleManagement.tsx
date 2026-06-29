@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Role, AppPermission, SystemModule } from '../types';
+import { filterTenantRoles, tenantRoleDisplayName } from '@/lib/tenant-roles';
 
 const RoleManagement: React.FC = () => {
   const { t } = useTranslation();
@@ -27,7 +28,7 @@ const RoleManagement: React.FC = () => {
       if (rolesRes.ok && modulesRes.ok) {
         const rolesData = await rolesRes.json();
         const modulesData = await modulesRes.json();
-        setRoles(rolesData);
+        setRoles(filterTenantRoles(Array.isArray(rolesData) ? rolesData : []));
         setModules(modulesData);
       }
     } catch (err) {
@@ -125,7 +126,7 @@ const RoleManagement: React.FC = () => {
         </div>
         <button
           onClick={handleCreate}
-          className="flex items-center gap-2 rounded-lg bg-primary px-5 py-2 text-xs font-bold uppercase tracking-widest text-primary-foreground transition-all hover:bg-primary/90"
+          className="hidden items-center gap-2 rounded-lg bg-primary px-5 py-2 text-xs font-bold uppercase tracking-widest text-primary-foreground transition-all hover:bg-primary/90"
         >
           <i className="fa-solid fa-plus text-[10px]" />
           {t('settings.addRole')}
@@ -137,7 +138,7 @@ const RoleManagement: React.FC = () => {
         {roles.map((role) => (
           <div key={role.id} className="bg-white rounded-2xl border border-slate-200 p-8 shadow-sm hover:shadow-md transition-shadow flex flex-col">
             <div className="mb-6">
-              <h3 className="text-xl font-bold text-slate-900 mb-1">{role.name}</h3>
+              <h3 className="text-xl font-bold text-slate-900 mb-1">{tenantRoleDisplayName(role)}</h3>
               <p className="text-xs text-slate-400 font-medium tracking-tight">
                 {t('settings.rolesTitle')} · {role.totalUsers ?? 0} {t('users.user').toLowerCase()}
               </p>
@@ -169,18 +170,6 @@ const RoleManagement: React.FC = () => {
           </div>
         ))}
 
-        {/* Add new role card */}
-        <div
-          className="bg-white rounded-2xl border border-dashed border-slate-300 p-8 flex flex-col items-center justify-center min-h-[280px] text-center group cursor-pointer hover:border-red-300 transition-all"
-          onClick={handleCreate}
-        >
-          <img
-            src="https://preview.keenthemes.com/metronic8/demo1/assets/media/illustrations/sigma-1/4.png"
-            className="w-36 h-36 object-contain mb-4 grayscale opacity-40 group-hover:grayscale-0 group-hover:opacity-100 transition-all"
-            alt=""
-          />
-          <p className="text-red-500 font-bold text-sm group-hover:text-red-600 transition-colors">{t('settings.newRole')}</p>
-        </div>
       </div>
 
       {/* Role Modal */}

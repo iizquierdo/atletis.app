@@ -878,6 +878,7 @@ const App: React.FC = () => {
                             onCompanyChange={setSelectedCompanyId}
                             allowedCompanyIds={currentUser?.accessCompanyIds || []}
                             userCompanyId={currentUser?.companyId}
+                            organizationName={currentUser?.organizationName}
                             mobileOpen={isSidebarOpen}
                             onMobileClose={() => setIsSidebarOpen(false)}
                             activeModuleCodes={readableModuleCodes}

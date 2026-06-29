@@ -42,6 +42,7 @@ interface SidebarProps {
   onCompanyChange: (id: string) => void;
   allowedCompanyIds?: string[];
   userCompanyId?: string;
+  organizationName?: string | null;
   mobileOpen?: boolean;
   onMobileClose?: () => void;
   onCompanyLabelChange?: (name: string) => void;
@@ -116,6 +117,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   onCompanyChange,
   allowedCompanyIds = [],
   userCompanyId,
+  organizationName,
   mobileOpen = false,
   onMobileClose,
   onCompanyLabelChange,
@@ -127,9 +129,16 @@ const Sidebar: React.FC<SidebarProps> = ({
   const { t } = useTranslation();
   const [selectedMain, setSelectedMain] = useState<string>('dashboard');
   const [isCompanyOpen, setIsCompanyOpen] = useState(false);
-  const [organization, setOrganization] = useState<{ id: string; name: string } | null>({ id: 'org', name: 'Organization' });
+  const initialOrganizationName = String(organizationName || '').trim() || 'Organización';
+  const [organization, setOrganization] = useState<{ id: string; name: string } | null>({ id: 'org', name: initialOrganizationName });
   const [companies, setCompanies] = useState<{ id: string; name: string; status?: string | null }[]>([]);
   const [menuConfigGroups, setMenuConfigGroups] = useState<MenuConfigGroup[]>([]);
+
+  useEffect(() => {
+    const name = String(organizationName || '').trim();
+    if (!name) return;
+    setOrganization((prev) => ({ id: prev?.id || 'org', name }));
+  }, [organizationName]);
 
   const activeCodeSet = useMemo(
     () => new Set(activeModuleCodes.map((code) => String(code || '').toUpperCase())),
@@ -288,9 +297,9 @@ const Sidebar: React.FC<SidebarProps> = ({
       })
       .then((data) => {
         const name = String(data?.name || '').trim();
-        setOrganization({ id: String(data?.id || 'org'), name: name || 'Organization' });
+        setOrganization({ id: String(data?.id || 'org'), name: name || initialOrganizationName });
       })
-      .catch(() => setOrganization({ id: 'org', name: 'Organization' }));
+      .catch(() => setOrganization({ id: 'org', name: initialOrganizationName }));
 
     fetch(`/api/companies?status=Active&t=${Date.now()}`)
       .then((res) => (res.ok ? res.json() : []))
@@ -309,7 +318,7 @@ const Sidebar: React.FC<SidebarProps> = ({
       window.removeEventListener('companiesUpdated', fetchData);
       window.removeEventListener('menusUpdated', fetchMenuConfig);
     };
-  }, [JSON.stringify(allowedCompanyIds), userCompanyId]);
+  }, [JSON.stringify(allowedCompanyIds), userCompanyId, initialOrganizationName]);
 
   useEffect(() => {
     if (selectedCompanyId !== 'org' && !companies.some((c) => c.id === selectedCompanyId)) {
@@ -329,7 +338,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   const railBackground = (sidebarBackgroundColor || '#000000').trim() || '#000000';
 
   const selectedItemName = selectedCompanyId === 'org'
-    ? (organization?.name || 'Organization')
+    ? (organization?.name || initialOrganizationName)
     : (companies.find((c) => c.id === selectedCompanyId)?.name || 'Select Company');
 
   useEffect(() => {
@@ -420,7 +429,7 @@ const Sidebar: React.FC<SidebarProps> = ({
 
             {isCompanyOpen && (
               <div className="absolute left-4 right-4 z-50 mt-1 animate-in fade-in slide-in-from-top-2 rounded-xl border border-slate-200 bg-white p-2 shadow-xl shadow-slate-200/50 duration-200">
-                <p className="px-2 py-1 text-[10px] font-bold uppercase tracking-widest text-slate-400">{t('sidebar.selectCompany')}</p>
+                <p className="px-2 py-1 text-[10px] font-bold uppercase tracking-widest text-slate-400">Seleccionar sucursal</p>
                 <div className="mt-1 max-h-[300px] space-y-1 overflow-y-auto">
                   <button
                     onClick={() => {
@@ -433,7 +442,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                       }`}
                   >
                     <i className="fa-solid fa-sitemap text-[10px] opacity-70"></i>
-                    {organization?.name || 'Organization'}
+                    <span className="min-w-0 flex-1 truncate text-left">Todas las sucursales</span>
                     {selectedCompanyId === 'org' && <i className="fa-solid fa-check ml-auto text-primary"></i>}
                   </button>
 

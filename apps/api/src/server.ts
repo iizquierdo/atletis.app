@@ -659,6 +659,7 @@ const getNormalizedUserById = async (id: string) => {
 
     const extraResult = await pool.query(
         `SELECT u."language", u."accessCompanyIds", u.avatar, u."imageUrl", u."coverUrl",
+                o.name AS "organizationName",
                 o."defaultLanguage" AS "organizationDefaultLanguage"
            FROM "User" u
            LEFT JOIN "Company" c ON c.id = u."companyId"
@@ -692,6 +693,7 @@ const getNormalizedUserById = async (id: string) => {
         imageUrl,
         coverUrl,
         language: extra?.language || null,
+        organizationName: extra?.organizationName || null,
         organizationDefaultLanguage: extra?.organizationDefaultLanguage || null,
         accessCompanyIds: parseAccessCompanyIds(extra?.accessCompanyIds)
     };
