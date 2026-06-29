@@ -204,9 +204,12 @@ const App: React.FC = () => {
       legacyRole === 'administrator' ||
       legacyRole === 'admin' ||
       legacyRole === 'administrador' ||
+      legacyRole === 'admin sede' ||
+      legacyRole === 'super admin' ||
       roleName === 'administrator' ||
       roleName === 'admin' ||
       roleName === 'administrador' ||
+      roleName === 'admin sede' ||
       roleName === 'super admin';
 
     if (hasAdminRole) {
