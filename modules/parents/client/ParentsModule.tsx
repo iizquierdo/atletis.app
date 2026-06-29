@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AppUser, ViewType } from '@sinapsis/shared-types';
+import { mediaUrl } from '@webapp/lib/media';
 import {
   type ColumnDef,
   type SortingState,
@@ -246,7 +247,7 @@ const ParentsModule: React.FC<Props> = ({ view, setView, companyId, onSubTitleCh
           return (
             <div className="flex items-center gap-3">
               {p.imageUrl
-                ? <img src={p.imageUrl} alt={initials} className="h-9 w-9 flex-shrink-0 rounded-xl object-cover" />
+                ? <img src={mediaUrl(p.imageUrl)} alt={initials} className="h-9 w-9 flex-shrink-0 rounded-xl object-cover" />
                 : <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-red-50 text-sm font-bold text-red-500">{initials}</div>
               }
               <div>
@@ -271,7 +272,7 @@ const ParentsModule: React.FC<Props> = ({ view, setView, companyId, onSubTitleCh
                 return (
                   <div key={k.id} className="flex items-center gap-2">
                     {k.imageUrl
-                      ? <img src={k.imageUrl} alt={initials} className="h-7 w-7 flex-shrink-0 rounded-lg object-cover" />
+                      ? <img src={mediaUrl(k.imageUrl)} alt={initials} className="h-7 w-7 flex-shrink-0 rounded-lg object-cover" />
                       : <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-slate-100 text-[10px] font-bold text-slate-500">{initials}</div>
                     }
                     <span className="text-sm text-foreground">{`${k.firstName || ''} ${k.lastName || ''}`.trim()}</span>
@@ -493,7 +494,7 @@ const ParentsModule: React.FC<Props> = ({ view, setView, companyId, onSubTitleCh
                     return (
                       <div key={child.id} className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 dark:border-border dark:bg-card">
                         {child.imageUrl
-                          ? <img src={child.imageUrl} alt={initials2} className="h-10 w-10 flex-shrink-0 rounded-xl object-cover" />
+                          ? <img src={mediaUrl(child.imageUrl)} alt={initials2} className="h-10 w-10 flex-shrink-0 rounded-xl object-cover" />
                           : <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-red-50 text-sm font-bold text-red-500">
                               {initials2 || <UserRound className="size-4" />}
                             </div>

@@ -4,6 +4,7 @@ import { AppUser } from '../types';
 import { ProfileHeader } from './shared/ProfileHeader';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
+import { mediaUrl } from '@/lib/media';
 
 interface UserProfileProps {
   user?: AppUser;
@@ -32,7 +33,7 @@ const UserProfile: React.FC<UserProfileProps> = ({ user, onRefresh, onEdit }) =>
   const profileRole = user?.roleRef?.name || user?.role || '—';
   const profileEmail = user?.email || '—';
   const profileCompany = user?.company?.name || '—';
-  const profileAvatar = user?.avatar || '';
+  const profileAvatar = (user as any)?.imageUrl || user?.avatar || '';
 
   const [activeTab, setActiveTab] = useState<'Overview' | 'Security'>('Overview');
   const [currentPassword, setCurrentPassword] = useState('');
@@ -46,13 +47,6 @@ const UserProfile: React.FC<UserProfileProps> = ({ user, onRefresh, onEdit }) =>
     setNewPassword('');
     setConfirmPassword('');
   }, [user?.id]);
-
-  const resolveAvatarUrl = (avatar?: string) => {
-    if (!avatar) return '';
-    if (avatar.startsWith('http://') || avatar.startsWith('https://')) return avatar;
-    if (avatar.startsWith('/')) return avatar;
-    return avatar;
-  };
 
   const handleAvatarChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -117,7 +111,7 @@ const UserProfile: React.FC<UserProfileProps> = ({ user, onRefresh, onEdit }) =>
       <ProfileHeader
         title={profileName}
         initials={nameInitials(profileName)}
-        imageUrl={resolveAvatarUrl(profileAvatar) || null}
+        imageUrl={mediaUrl(profileAvatar) || null}
         onLogoClick={() => fileInputRef.current?.click()}
         meta={[
           { icon: <User className="size-4" />, text: profileRole },

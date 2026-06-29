@@ -14,6 +14,7 @@ import { DataGrid } from '@/components/ui/data-grid';
 import { DataGridColumnHeader } from '@/components/ui/data-grid-column-header';
 import { DataGridTable } from '@/components/ui/data-grid-table';
 import { Input } from '@/components/ui/input';
+import { mediaUrl } from '@/lib/media';
 import { cn } from '@/lib/utils';
 
 interface ResourceRow {
@@ -82,7 +83,7 @@ const DisciplineResourcesAdminPage: React.FC = () => {
             <p className="text-sm font-semibold text-foreground">{row.original.title}</p>
             {row.original.resourceUrl && (
               <a
-                href={row.original.resourceUrl}
+                href={mediaUrl(row.original.resourceUrl)}
                 target="_blank"
                 rel="noreferrer"
                 className="text-[11px] font-medium text-primary hover:underline"

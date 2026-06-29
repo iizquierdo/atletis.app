@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { mediaUrl } from '@/lib/media';
 
 type Organization = { id: string; name: string };
 type Company = { id: string; name: string; organizationId: string };
@@ -644,7 +645,7 @@ const AssetsAdminPage: React.FC = () => {
                 <ul className="max-h-32 space-y-1 overflow-auto text-sm">
                   {files.map((f) => (
                     <li key={f.id} className="flex items-center justify-between gap-2">
-                      <a className="truncate text-primary underline" href={f.fileUrl} target="_blank" rel="noreferrer">
+                      <a className="truncate text-primary underline" href={mediaUrl(f.fileUrl)} target="_blank" rel="noreferrer">
                         {f.originalName}
                       </a>
                       <Button type="button" size="sm" variant="ghost" onClick={() => void deleteProductFile(editingProduct.id, f.id)}>

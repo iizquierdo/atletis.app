@@ -12,6 +12,7 @@ import { Building2, CalendarDays, Eye, GraduationCap, IdCard, Mail, Pencil, Powe
 import { Button } from '@webapp/components/ui/button';
 import { DataGridColumnHeader } from '@webapp/components/ui/data-grid-column-header';
 import { cn } from '@webapp/lib/utils';
+import { mediaUrl } from '@webapp/lib/media';
 import ListCard from '@webapp/components/shared/ListCard';
 import ProfileHeader from '@webapp/components/shared/ProfileHeader';
 import ImportModal from '@webapp/components/shared/ImportModal';
@@ -546,7 +547,7 @@ const StudentModule: React.FC<Props> = ({ view, setView, currentUser, companyId,
           return (
             <div className="flex items-center gap-3">
               {s.imageUrl
-                ? <img src={s.imageUrl} alt={initials} className="h-9 w-9 flex-shrink-0 rounded-xl object-cover" />
+                ? <img src={mediaUrl(s.imageUrl)} alt={initials} className="h-9 w-9 flex-shrink-0 rounded-xl object-cover" />
                 : <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-red-50 text-sm font-bold text-red-500">{initials}</div>
               }
               <div>
@@ -850,7 +851,7 @@ const StudentModule: React.FC<Props> = ({ view, setView, currentUser, companyId,
                       {/* Header row: avatar + meta + status */}
                       <div className="flex items-center gap-3 border-b border-slate-100 bg-slate-50/60 px-4 py-3">
                         {r.authorAvatarUrl ? (
-                          <img src={r.authorAvatarUrl} alt={r.authorName} className="h-9 w-9 shrink-0 rounded-full object-cover" />
+                          <img src={mediaUrl(r.authorAvatarUrl)} alt={r.authorName} className="h-9 w-9 shrink-0 rounded-full object-cover" />
                         ) : (
                           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-red-400 to-rose-500 text-xs font-bold text-white">
                             {initials}
@@ -986,7 +987,7 @@ const StudentModule: React.FC<Props> = ({ view, setView, currentUser, companyId,
                 {communities.map((c) => (
                   <div key={c.id} className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm dark:border-border dark:bg-card">
                     {c.imageUrl
-                      ? <img src={c.imageUrl} alt={c.name} className="h-10 w-10 flex-shrink-0 rounded-xl object-cover" />
+                      ? <img src={mediaUrl(c.imageUrl)} alt={c.name} className="h-10 w-10 flex-shrink-0 rounded-xl object-cover" />
                       : (
                         <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-red-50 text-red-500">
                           <i className="fa-solid fa-users text-sm" />

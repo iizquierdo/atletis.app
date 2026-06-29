@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AppUser, ViewType } from '@sinapsis/shared-types';
+import { mediaUrl } from '@webapp/lib/media';
 import {
   type ColumnDef,
   type SortingState,
@@ -675,7 +676,7 @@ const TeachersModule: React.FC<Props> = ({ view, setView, companyId, onSubTitleC
           return (
             <div className="flex items-center gap-3">
               {p.imageUrl
-                ? <img src={p.imageUrl} alt={initials} className="h-9 w-9 flex-shrink-0 rounded-xl object-cover" />
+                ? <img src={mediaUrl(p.imageUrl)} alt={initials} className="h-9 w-9 flex-shrink-0 rounded-xl object-cover" />
                 : <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-red-50 text-sm font-bold text-red-500">{initials}</div>
               }
               <div>
@@ -892,7 +893,7 @@ const TeachersModule: React.FC<Props> = ({ view, setView, companyId, onSubTitleC
                     return (
                       <div key={`${s.id}-${s.classId}`} className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 dark:border-border dark:bg-card">
                         {s.imageUrl
-                          ? <img src={s.imageUrl} alt={initials2} className="h-9 w-9 flex-shrink-0 rounded-xl object-cover" />
+                          ? <img src={mediaUrl(s.imageUrl)} alt={initials2} className="h-9 w-9 flex-shrink-0 rounded-xl object-cover" />
                           : <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-red-50 text-sm font-bold text-red-500">
                               {initials2 || <UserRound className="size-4" />}
                             </div>
@@ -936,7 +937,7 @@ const TeachersModule: React.FC<Props> = ({ view, setView, companyId, onSubTitleC
                 {communities.map((c) => (
                   <div key={c.id} className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm dark:border-border dark:bg-card">
                     {c.imageUrl
-                      ? <img src={c.imageUrl} alt={c.name} className="h-10 w-10 flex-shrink-0 rounded-xl object-cover" />
+                      ? <img src={mediaUrl(c.imageUrl)} alt={c.name} className="h-10 w-10 flex-shrink-0 rounded-xl object-cover" />
                       : <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-red-50 text-red-500"><Users className="size-4" /></div>
                     }
                     <div className="min-w-0 flex-1">
@@ -1021,7 +1022,7 @@ const TeachersModule: React.FC<Props> = ({ view, setView, companyId, onSubTitleC
                         <button key={c.id} type="button" onClick={() => openConversation(c)}
                           className="flex w-full items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-left hover:bg-slate-50 dark:border-border dark:bg-card">
                           {c.studentAvatarUrl
-                            ? <img src={c.studentAvatarUrl} alt={studentName} className="h-9 w-9 flex-shrink-0 rounded-xl object-cover" />
+                            ? <img src={mediaUrl(c.studentAvatarUrl)} alt={studentName} className="h-9 w-9 flex-shrink-0 rounded-xl object-cover" />
                             : <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-blue-50 text-sm font-bold text-blue-500">{ini}</div>
                           }
                           <div className="min-w-0 flex-1">
@@ -1067,7 +1068,7 @@ const TeachersModule: React.FC<Props> = ({ view, setView, companyId, onSubTitleC
                     <div key={r.id} className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
                       <div className="flex items-center gap-3 border-b border-slate-100 bg-slate-50/60 px-4 py-3">
                         {r.studentAvatarUrl
-                          ? <img src={r.studentAvatarUrl} alt={r.studentName || ''} className="h-9 w-9 shrink-0 rounded-full object-cover" />
+                          ? <img src={mediaUrl(r.studentAvatarUrl)} alt={r.studentName || ''} className="h-9 w-9 shrink-0 rounded-full object-cover" />
                           : <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-50 text-xs font-bold text-blue-500">{studentInitials}</div>
                         }
                         <div className="min-w-0 flex-1">

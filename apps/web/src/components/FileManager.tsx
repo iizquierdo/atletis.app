@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { mediaUrl } from '@/lib/media';
 
 interface EntityFileItem {
   id: string;
@@ -280,7 +281,7 @@ const FileManager: React.FC<FileManagerProps> = ({
                   <td className="px-4 py-3 text-sm font-semibold text-slate-800">
                     <div className="flex items-center gap-2">
                       <i className="fa-solid fa-file text-slate-400"></i>
-                      <a href={file.fileUrl} target="_blank" rel="noreferrer" className="hover:text-red-500 underline">
+                      <a href={mediaUrl(file.fileUrl)} target="_blank" rel="noreferrer" className="hover:text-red-500 underline">
                         {file.name}
                       </a>
                     </div>

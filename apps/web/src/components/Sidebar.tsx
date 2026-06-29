@@ -327,6 +327,12 @@ const Sidebar: React.FC<SidebarProps> = ({
   }, [selectedCompanyId, companies, onCompanyChange]);
 
   useEffect(() => {
+    if (selectedCompanyId === 'org' && companies[0]?.id) {
+      onCompanyChange(companies[0].id);
+    }
+  }, [selectedCompanyId, companies, onCompanyChange]);
+
+  useEffect(() => {
     const targetMain = viewToMain[currentView];
     if (targetMain) {
       setSelectedMain(targetMain);
@@ -431,24 +437,9 @@ const Sidebar: React.FC<SidebarProps> = ({
               <div className="absolute left-4 right-4 z-50 mt-1 animate-in fade-in slide-in-from-top-2 rounded-xl border border-slate-200 bg-white p-2 shadow-xl shadow-slate-200/50 duration-200">
                 <p className="px-2 py-1 text-[10px] font-bold uppercase tracking-widest text-slate-400">Seleccionar sucursal</p>
                 <div className="mt-1 max-h-[300px] space-y-1 overflow-y-auto">
-                  <button
-                    onClick={() => {
-                      onCompanyChange('org');
-                      setIsCompanyOpen(false);
-                    }}
-                    className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs font-bold transition-all ${selectedCompanyId === 'org'
-                      ? 'bg-primary/10 text-primary'
-                      : 'text-slate-600 hover:bg-slate-50'
-                      }`}
-                  >
-                    <i className="fa-solid fa-sitemap text-[10px] opacity-70"></i>
-                    <span className="min-w-0 flex-1 truncate text-left">Todas las sucursales</span>
-                    {selectedCompanyId === 'org' && <i className="fa-solid fa-check ml-auto text-primary"></i>}
-                  </button>
-
-                  <div className="mx-2 my-1 h-[1px] bg-slate-100"></div>
-
-                  {companies.map((company) => (
+                  {companies.length === 0 ? (
+                    <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs font-medium text-slate-400">No hay sucursales activas</p>
+                  ) : companies.map((company) => (
                     <button
                       key={company.id}
                       onClick={() => {

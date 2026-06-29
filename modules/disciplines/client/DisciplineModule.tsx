@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AppUser, ViewType } from '@sinapsis/shared-types';
+import { mediaUrl } from '@webapp/lib/media';
 import {
   type ColumnDef,
   type SortingState,
@@ -531,7 +532,7 @@ const DisciplineModule: React.FC<DisciplineModuleProps> = ({ view, setView, curr
             <div className="flex items-center gap-3">
               <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center overflow-hidden rounded-xl bg-red-50 text-red-500">
                 {d.imageUrl ? (
-                  <img src={d.imageUrl} alt={d.name} className="h-full w-full object-cover" />
+                  <img src={mediaUrl(d.imageUrl)} alt={d.name} className="h-full w-full object-cover" />
                 ) : (
                   <Dumbbell className="size-4" />
                 )}
@@ -668,7 +669,7 @@ const DisciplineModule: React.FC<DisciplineModuleProps> = ({ view, setView, curr
           return (
             <div className="flex items-center gap-2">
               {disciplineImageUrl ? (
-                <img src={disciplineImageUrl} alt={disciplineName || ''} className="size-7 rounded-full object-cover shrink-0" />
+                <img src={mediaUrl(disciplineImageUrl)} alt={disciplineName || ''} className="size-7 rounded-full object-cover shrink-0" />
               ) : (
                 <div className="size-7 rounded-full bg-muted flex items-center justify-center shrink-0">
                   <Dumbbell className="size-3.5 text-muted-foreground" />
@@ -693,7 +694,7 @@ const DisciplineModule: React.FC<DisciplineModuleProps> = ({ view, setView, curr
           return (
             <div className="flex justify-end gap-1" onClick={(e) => e.stopPropagation()}>
               {r.resourceUrl && (
-                <a href={r.resourceUrl} target="_blank" rel="noreferrer">
+                <a href={mediaUrl(r.resourceUrl)} target="_blank" rel="noreferrer">
                   <Button type="button" mode="icon" size="sm" variant="outline" className="size-8" aria-label={t('disciplines.open')}>
                     <i className="fa-solid fa-up-right-from-square text-[11px]" />
                   </Button>
@@ -883,7 +884,7 @@ const DisciplineModule: React.FC<DisciplineModuleProps> = ({ view, setView, curr
                     </div>
                     {r.description && <p className="mt-2 text-xs text-slate-500">{r.description}</p>}
                     {r.resourceUrl && (
-                      <a href={r.resourceUrl} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-widest text-red-500 hover:text-red-600">
+                      <a href={mediaUrl(r.resourceUrl)} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-widest text-red-500 hover:text-red-600">
                         <i className="fa-solid fa-up-right-from-square" /> {t('disciplines.open')}
                       </a>
                     )}

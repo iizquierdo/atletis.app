@@ -12,6 +12,7 @@ import { Pencil, Trash2, X } from 'lucide-react';
 import { Button } from '@webapp/components/ui/button';
 import { DataGridColumnHeader } from '@webapp/components/ui/data-grid-column-header';
 import ListCard from '@webapp/components/shared/ListCard';
+import { mediaUrl } from '@webapp/lib/media';
 import { cn } from '@webapp/lib/utils';
 
 // ── Rating ───────────────────────────────────────────────────────────────────
@@ -285,7 +286,7 @@ const ReportsModule: React.FC<Props> = ({ companyId }) => {
         cell: ({ row: { original: r } }) => (
           <div className="flex items-center gap-3">
             {r.studentAvatarUrl
-              ? <img src={r.studentAvatarUrl} alt="" className="h-9 w-9 flex-shrink-0 rounded-xl object-cover" />
+              ? <img src={mediaUrl(r.studentAvatarUrl)} alt="" className="h-9 w-9 flex-shrink-0 rounded-xl object-cover" />
               : <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-blue-50 text-sm font-bold text-blue-500">
                   {initials(r.studentName)}
                 </div>
@@ -318,7 +319,7 @@ const ReportsModule: React.FC<Props> = ({ companyId }) => {
         cell: ({ row: { original: r } }) => (
           <div className="flex items-center gap-2">
             {r.authorAvatarUrl
-              ? <img src={r.authorAvatarUrl} alt="" className="h-7 w-7 rounded-full object-cover" />
+              ? <img src={mediaUrl(r.authorAvatarUrl)} alt="" className="h-7 w-7 rounded-full object-cover" />
               : <div className="flex h-7 w-7 items-center justify-center rounded-full bg-red-50 text-[10px] font-bold text-red-500">{initials(r.authorName)}</div>
             }
             <span className="text-sm text-foreground">{r.authorName || '—'}</span>

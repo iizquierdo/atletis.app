@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AppUser, ViewType } from '@sinapsis/shared-types';
+import { mediaUrl } from '@webapp/lib/media';
 import {
   type ColumnDef,
   type SortingState,
@@ -614,7 +615,7 @@ const ClassModule: React.FC<Props> = ({ view, setView, currentUser, companyId, o
           return (
             <div className="flex items-center gap-3">
               {c.imageUrl
-                ? <img src={c.imageUrl} alt={c.name} className="h-9 w-9 flex-shrink-0 rounded-xl object-cover" />
+                ? <img src={mediaUrl(c.imageUrl)} alt={c.name} className="h-9 w-9 flex-shrink-0 rounded-xl object-cover" />
                 : <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-red-50 text-red-500"><CalendarDays className="size-4" /></div>
               }
               <div>
@@ -645,7 +646,7 @@ const ClassModule: React.FC<Props> = ({ view, setView, currentUser, companyId, o
               {visible.map((t) => (
                 <div key={t.id} title={t.name} className="size-7 shrink-0 rounded-full ring-2 ring-background overflow-hidden bg-slate-100 flex items-center justify-center">
                   {t.avatar
-                    ? <img src={t.avatar} alt={t.name} className="size-full object-cover" />
+                    ? <img src={mediaUrl(t.avatar)} alt={t.name} className="size-full object-cover" />
                     : <span className="text-[10px] font-semibold text-slate-500 uppercase leading-none">{t.name.charAt(0)}</span>}
                 </div>
               ))}
@@ -793,7 +794,7 @@ const ClassModule: React.FC<Props> = ({ view, setView, currentUser, companyId, o
                         {/* Logo */}
                         <div className="size-12 shrink-0 rounded-lg overflow-hidden bg-slate-100 flex items-center justify-center my-3">
                           {l.imageUrl
-                            ? <img src={l.imageUrl} alt={l.name} className="size-full object-cover" />
+                            ? <img src={mediaUrl(l.imageUrl)} alt={l.name} className="size-full object-cover" />
                             : <span className="text-lg font-bold text-slate-300">{(l.name || '?').charAt(0).toUpperCase()}</span>}
                         </div>
                         {/* Info */}
@@ -869,7 +870,7 @@ const ClassModule: React.FC<Props> = ({ view, setView, currentUser, companyId, o
                         <div className="flex items-center gap-3">
                           <div className="size-16 shrink-0 rounded-xl overflow-hidden bg-slate-100 border border-slate-200 flex items-center justify-center">
                             {levelImagePreview
-                              ? <img src={levelImagePreview} alt="" className="size-full object-cover" />
+                              ? <img src={mediaUrl(levelImagePreview)} alt="" className="size-full object-cover" />
                               : <span className="text-2xl font-bold text-slate-200">{(levelForm.name || '?').charAt(0).toUpperCase()}</span>}
                           </div>
                           <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-dashed border-slate-300 px-4 py-2.5 text-sm text-slate-500 hover:border-primary hover:text-primary transition-colors">
@@ -963,7 +964,7 @@ const ClassModule: React.FC<Props> = ({ view, setView, currentUser, companyId, o
                     <div key={x.id} className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
                       <div className="size-11 shrink-0 rounded-full overflow-hidden bg-slate-100 flex items-center justify-center ring-2 ring-slate-100">
                         {x.teacherAvatar
-                          ? <img src={x.teacherAvatar} alt={x.teacherName} className="size-full object-cover" />
+                          ? <img src={mediaUrl(x.teacherAvatar)} alt={x.teacherName} className="size-full object-cover" />
                           : <span className="text-sm font-bold text-slate-400 uppercase">{(x.teacherName || '?').charAt(0)}</span>}
                       </div>
                       <div className="min-w-0 flex-1">
@@ -1116,7 +1117,7 @@ const ClassModule: React.FC<Props> = ({ view, setView, currentUser, companyId, o
                       <div key={s.id} className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-3">
                         <div className="flex items-center gap-3">
                           {s.imageUrl
-                            ? <img src={s.imageUrl} alt={initials} className="size-9 rounded-full object-cover" />
+                            ? <img src={mediaUrl(s.imageUrl)} alt={initials} className="size-9 rounded-full object-cover" />
                             : <div className="flex size-9 items-center justify-center rounded-full bg-slate-200 text-xs font-bold text-slate-600">{initials}</div>
                           }
                           <div>
@@ -1184,7 +1185,7 @@ const ClassModule: React.FC<Props> = ({ view, setView, currentUser, companyId, o
                               {(() => {
                                 const ini = [s.firstName?.[0], s.lastName?.[0]].filter(Boolean).join('').toUpperCase() || '?';
                                 return s.imageUrl
-                                  ? <img src={s.imageUrl} alt={ini} className="size-7 shrink-0 rounded-full object-cover" />
+                                  ? <img src={mediaUrl(s.imageUrl)} alt={ini} className="size-7 shrink-0 rounded-full object-cover" />
                                   : <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-slate-200 text-[10px] font-bold text-slate-600">{ini}</div>;
                               })()}
                               <div className="min-w-0">
@@ -1275,7 +1276,7 @@ const ClassModule: React.FC<Props> = ({ view, setView, currentUser, companyId, o
                   {classCommunities.map((c) => (
                     <div key={c.id} className="flex items-center gap-4 rounded-xl border border-slate-200 bg-white px-4 py-4 shadow-sm">
                       {c.imageUrl
-                        ? <img src={c.imageUrl} alt={c.name} className="size-11 shrink-0 rounded-xl object-cover" />
+                        ? <img src={mediaUrl(c.imageUrl)} alt={c.name} className="size-11 shrink-0 rounded-xl object-cover" />
                         : <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-red-50 text-red-400"><Users className="size-5" /></div>
                       }
                       <div className="min-w-0 flex-1">
@@ -1334,7 +1335,7 @@ const ClassModule: React.FC<Props> = ({ view, setView, currentUser, companyId, o
                       </div>
                       {r.description && <p className="mt-2 text-xs text-slate-500">{r.description}</p>}
                       {r.resourceUrl && (
-                        <a href={r.resourceUrl} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-widest text-red-500 hover:text-red-600">
+                        <a href={mediaUrl(r.resourceUrl)} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-widest text-red-500 hover:text-red-600">
                           <i className="fa-solid fa-up-right-from-square" /> {t('classes.open')}
                         </a>
                       )}

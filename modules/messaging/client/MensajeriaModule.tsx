@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { AppUser, ViewType } from '@sinapsis/shared-types';
+import { mediaUrl } from '@webapp/lib/media';
 
 interface MensajeriaModuleProps {
   view: 'list' | 'thread';
@@ -80,7 +81,7 @@ const Avatar: React.FC<{ name: string; imageUrl?: string | null; size?: number; 
   if (imageUrl) {
     return (
       <img
-        src={imageUrl}
+        src={mediaUrl(imageUrl)}
         alt={name}
         style={{ width: size, height: size, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }}
         onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}

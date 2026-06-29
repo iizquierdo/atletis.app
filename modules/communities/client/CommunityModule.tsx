@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AppUser, ViewType } from '@sinapsis/shared-types';
+import { mediaUrl } from '@webapp/lib/media';
 import {
   type ColumnDef,
   type SortingState,
@@ -278,7 +279,7 @@ const CommunityModule: React.FC<Props> = ({ view, setView, currentUser, companyI
           return (
             <div className="flex items-center gap-3">
               {c.imageUrl
-                ? <img src={c.imageUrl} alt={c.name} className="h-9 w-9 flex-shrink-0 rounded-xl object-cover" />
+                ? <img src={mediaUrl(c.imageUrl)} alt={c.name} className="h-9 w-9 flex-shrink-0 rounded-xl object-cover" />
                 : <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-red-50 text-red-500"><UsersRound className="size-4" /></div>
               }
               <div>
@@ -415,7 +416,7 @@ const CommunityModule: React.FC<Props> = ({ view, setView, currentUser, companyI
                           <X className="size-3.5" />
                         </button>
                         {m.imageUrl
-                          ? <img src={m.imageUrl} alt={name} className="size-14 rounded-full object-cover ring-2 ring-slate-100" />
+                          ? <img src={mediaUrl(m.imageUrl)} alt={name} className="size-14 rounded-full object-cover ring-2 ring-slate-100" />
                           : <div className="flex size-14 items-center justify-center rounded-full bg-red-50 text-lg font-bold text-red-500 ring-2 ring-slate-100">{initials}</div>
                         }
                         <div className="min-w-0 w-full">
@@ -436,7 +437,7 @@ const CommunityModule: React.FC<Props> = ({ view, setView, currentUser, companyI
               <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                 <div className="flex gap-3">
                   {currentUserAvatar
-                    ? <img src={currentUserAvatar} alt="" className="size-10 shrink-0 rounded-full object-cover" />
+                    ? <img src={mediaUrl(currentUserAvatar)} alt="" className="size-10 shrink-0 rounded-full object-cover" />
                     : <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-red-100 text-sm font-bold text-red-500">{currentUserInitials}</div>
                   }
                   {!composeExpanded ? (
@@ -467,10 +468,10 @@ const CommunityModule: React.FC<Props> = ({ view, setView, currentUser, companyI
                       {composeAttachment && (
                         <div className="relative overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
                           {composeAttachment.mediaType === 'image' && (
-                            <img src={composeAttachment.url} alt="" className="max-h-48 w-full object-cover" />
+                            <img src={mediaUrl(composeAttachment.url)} alt="" className="max-h-48 w-full object-cover" />
                           )}
                           {composeAttachment.mediaType === 'video' && (
-                            <video src={composeAttachment.url} controls className="max-h-48 w-full" />
+                            <video src={mediaUrl(composeAttachment.url)} controls className="max-h-48 w-full" />
                           )}
                           {composeAttachment.mediaType === 'document' && (
                             <div className="flex items-center gap-2 px-4 py-3">
@@ -554,7 +555,7 @@ const CommunityModule: React.FC<Props> = ({ view, setView, currentUser, companyI
                     <div key={p.id} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                       <div className="flex items-start gap-3">
                         {avatar
-                          ? <img src={avatar} alt={p.authorName} className="size-10 shrink-0 rounded-full object-cover" />
+                          ? <img src={mediaUrl(avatar)} alt={p.authorName} className="size-10 shrink-0 rounded-full object-cover" />
                           : <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-red-50 text-sm font-bold text-red-500">{initials}</div>
                         }
                         <div className="min-w-0 flex-1">
@@ -577,19 +578,19 @@ const CommunityModule: React.FC<Props> = ({ view, setView, currentUser, companyI
                       {p.coverUrl && (
                         <div className="mt-3 overflow-hidden rounded-xl border border-slate-100">
                           {p.mediaType === 'image' && (
-                            <img src={p.coverUrl} alt="" className="max-h-72 w-full object-cover" />
+                            <img src={mediaUrl(p.coverUrl)} alt="" className="max-h-72 w-full object-cover" />
                           )}
                           {p.mediaType === 'video' && (
-                            <video src={p.coverUrl} controls className="max-h-72 w-full" />
+                            <video src={mediaUrl(p.coverUrl)} controls className="max-h-72 w-full" />
                           )}
                           {p.mediaType === 'document' && (
-                            <a href={p.coverUrl} target="_blank" rel="noreferrer" className="flex items-center gap-2 bg-slate-50 px-4 py-3 text-sm text-blue-600 hover:bg-slate-100">
+                            <a href={mediaUrl(p.coverUrl)} target="_blank" rel="noreferrer" className="flex items-center gap-2 bg-slate-50 px-4 py-3 text-sm text-blue-600 hover:bg-slate-100">
                               <Paperclip className="size-4 shrink-0" />
                               <span className="truncate">{p.coverUrl.split('/').pop()}</span>
                             </a>
                           )}
                           {p.mediaType === 'link' && (
-                            <a href={p.coverUrl} target="_blank" rel="noreferrer" className="flex items-center gap-2 bg-slate-50 px-4 py-3 text-sm text-blue-600 hover:bg-slate-100">
+                            <a href={mediaUrl(p.coverUrl)} target="_blank" rel="noreferrer" className="flex items-center gap-2 bg-slate-50 px-4 py-3 text-sm text-blue-600 hover:bg-slate-100">
                               <Link2 className="size-4 shrink-0" />
                               <span className="truncate">{p.coverUrl}</span>
                             </a>

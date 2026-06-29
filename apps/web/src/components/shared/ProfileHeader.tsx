@@ -1,6 +1,7 @@
 import React from 'react';
 import { ArrowLeft, Camera } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { resolveMediaUrl } from '@/lib/media';
 
 export interface ProfileHeaderTab {
   id: string;
@@ -55,11 +56,14 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
   onCoverClick,
   actions
 }) => {
+  const resolvedCoverUrl = resolveMediaUrl(coverUrl);
+  const resolvedImageUrl = resolveMediaUrl(imageUrl);
+
   return (
     <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-border dark:bg-card">
       <div className="relative h-32 bg-gradient-to-r from-primary to-primary/75">
-        {coverUrl ? (
-          <img src={coverUrl} alt="" className="absolute inset-0 h-full w-full object-cover" />
+        {resolvedCoverUrl ? (
+          <img src={resolvedCoverUrl} alt="" className="absolute inset-0 h-full w-full object-cover" />
         ) : null}
 
         {onCoverClick ? (
@@ -90,8 +94,8 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
       <div className="flex flex-col gap-6 px-8 pb-8 md:flex-row">
         <div className="relative -mt-12">
           <div className="flex h-32 w-32 items-center justify-center overflow-hidden rounded-2xl border-4 border-white bg-white shadow-xl dark:border-card">
-            {imageUrl ? (
-              <img src={imageUrl} alt={title} className="h-full w-full object-cover" />
+            {resolvedImageUrl ? (
+              <img src={resolvedImageUrl} alt={title} className="h-full w-full object-cover" />
             ) : icon ? (
               <span className="flex h-full w-full items-center justify-center bg-primary/15 text-3xl text-primary">{icon}</span>
             ) : (

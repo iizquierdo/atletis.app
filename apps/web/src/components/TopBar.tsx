@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { AppUser, ViewType } from '../types';
 import { ModuleClientDefinition } from '../modules/module-contract';
 import { AppHeaderNav } from './AppHeaderNav';
+import { mediaUrl } from '@/lib/media';
 
 interface TopBarProps {
   onLogout?: () => void;
@@ -51,11 +52,7 @@ const TopBar: React.FC<TopBarProps> = ({
 
   const displayName = user?.name || [user?.firstName, user?.lastName].filter(Boolean).join(' ').trim() || 'Super Admin';
   const displayEmail = user?.email || 'admin@sinapsis.app';
-  const rawAvatar = user?.avatar?.trim();
-  const avatarSrc =
-    rawAvatar && (rawAvatar.startsWith('http://') || rawAvatar.startsWith('https://') || rawAvatar.startsWith('/'))
-      ? rawAvatar
-      : '';
+  const avatarSrc = mediaUrl(user?.avatar);
 
   return (
     <div

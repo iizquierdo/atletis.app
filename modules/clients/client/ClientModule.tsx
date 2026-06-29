@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AppUser, ViewType } from '@sinapsis/shared-types';
 import FileManager from '@webapp/components/FileManager';
+import { mediaUrl } from '@webapp/lib/media';
 
 type ClientView = 'all' | 'leads' | 'active' | 'inactive' | 'details';
 
@@ -914,7 +915,7 @@ const ClientModule: React.FC<ClientModuleProps> = ({ view, setView, currentUser,
               <div className="relative group cursor-pointer" onClick={handleLogoClick}>
                 <div className={`w-32 h-32 rounded-2xl shadow-lg border-4 border-white ${selectedClient.logoUrl ? 'bg-white' : 'bg-red-50 text-red-500'} flex items-center justify-center text-5xl font-bold overflow-hidden relative`}>
                   {selectedClient.logoUrl ? (
-                    <img src={selectedClient.logoUrl} alt={selectedClient.name} className="w-full h-full object-contain p-2" />
+                    <img src={mediaUrl(selectedClient.logoUrl)} alt={selectedClient.name} className="w-full h-full object-contain p-2" />
                   ) : (
                     selectedClient.name[0]
                   )}
@@ -1401,7 +1402,6 @@ const ClientModule: React.FC<ClientModuleProps> = ({ view, setView, currentUser,
 };
 
 export default ClientModule;
-
 
 
 

@@ -21,6 +21,7 @@ import { DataGrid } from '@/components/ui/data-grid';
 import { DataGridColumnHeader } from '@/components/ui/data-grid-column-header';
 import { DataGridTable } from '@/components/ui/data-grid-table';
 import { Input } from '@/components/ui/input';
+import { mediaUrl } from '@/lib/media';
 import { cn } from '@/lib/utils';
 
 export interface CompaniesSettingsCompany {
@@ -81,7 +82,7 @@ const CompaniesSettingsTable: React.FC<CompaniesSettingsTableProps> = ({
             <div className="flex items-center gap-3">
               {c.logoUrl ? (
                 <img
-                  src={c.logoUrl}
+                  src={mediaUrl(c.logoUrl)}
                   alt={c.name}
                   className="h-9 w-9 flex-shrink-0 rounded-xl border border-border bg-background object-contain p-1"
                 />

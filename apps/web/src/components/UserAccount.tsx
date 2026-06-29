@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AppUser, SYSTEM_LANGUAGES } from '../types';
+import { mediaUrl } from '@/lib/media';
 
 interface UserAccountProps {
     user?: AppUser;
@@ -69,13 +70,6 @@ const UserAccount: React.FC<UserAccountProps> = ({ user, onUserUpdate }) => {
         } catch {
             return '';
         }
-    };
-
-    const resolveAvatarUrl = (avatar?: string) => {
-        if (!avatar) return '';
-        if (avatar.startsWith('http://') || avatar.startsWith('https://')) return avatar;
-        if (avatar.startsWith('/')) return avatar;
-        return avatar;
     };
 
     const pushMessage = (next: MessageState) => {
@@ -257,7 +251,7 @@ const UserAccount: React.FC<UserAccountProps> = ({ user, onUserUpdate }) => {
     };
 
     const displayName = [form.firstName, form.lastName].filter(Boolean).join(' ').trim() || user?.name || 'User';
-    const avatarSrc = resolveAvatarUrl(user?.avatar);
+    const avatarSrc = mediaUrl(user?.avatar);
 
     return (
         <div className="max-w-5xl mx-auto space-y-6 animate-in fade-in duration-500 pb-20">
@@ -452,4 +446,3 @@ const UserAccount: React.FC<UserAccountProps> = ({ user, onUserUpdate }) => {
 };
 
 export default UserAccount;
-
