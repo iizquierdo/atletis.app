@@ -31,7 +31,7 @@ import { getClientModules } from './module-registry';
 import type { ModuleClientDefinition, ModuleRenderContext } from '@sinapsis/module-sdk-client';
 import AdminApp from './components/admin/AdminApp';
 import { buildViewRoutes, pathForView, viewForPath, type ViewRoute } from './lib/view-routes';
-import { assetUrl } from './lib/api-base';
+import { API_BASE, assetUrl } from './lib/api-base';
 
 type PublicCorePayload = {
   appName: string;
@@ -403,16 +403,6 @@ const App: React.FC = () => {
     const originalFetch = window.fetch.bind(window);
 
     window.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
-      // #region agent log
-      if ((window as any).__fetchDepth === undefined) (window as any).__fetchDepth = 0;
-      (window as any).__fetchDepth++;
-      if ((window as any).__fetchDepth > 10) {
-        const stack = new Error('fetch interceptor recursion detected').stack || '';
-        localStorage.setItem('dbg-902272-err', JSON.stringify({ msg: 'recursion', depth: (window as any).__fetchDepth, stack: stack.slice(0, 2000), ts: Date.now() }));
-        (window as any).__fetchDepth = 0;
-        throw new RangeError('[DBG-902272] fetch interceptor called recursively – check localStorage["dbg-902272-err"]');
-      }
-      // #endregion
       const raw = localStorage.getItem(AUTH_STORAGE_KEY);
       let token = '';
       try {
@@ -430,13 +420,22 @@ const App: React.FC = () => {
               ? input.url
               : '';
 
+      const apiBaseOrigin = (() => {
+        if (!API_BASE || API_BASE.startsWith('/')) return '';
+        try {
+          return new URL(API_BASE).origin;
+        } catch {
+          return '';
+        }
+      })();
+
       const pathForApiGate = (() => {
         const base = (rawUrl || '').split('#')[0];
         if (base.startsWith('/')) return base;
         if (base.startsWith('http://') || base.startsWith('https://')) {
           try {
             const u = new URL(base);
-            if (u.origin === window.location.origin) {
+            if (u.origin === window.location.origin || (apiBaseOrigin && u.origin === apiBaseOrigin)) {
               return `${u.pathname}${u.search}`;
             }
           } catch {
@@ -460,9 +459,6 @@ const App: React.FC = () => {
         headers.set('X-User-Id', currentUser.id);
       }
 
-      // #region agent log
-      (window as any).__fetchDepth--;
-      // #endregion
       return originalFetch(input, {
         ...(init || {}),
         headers

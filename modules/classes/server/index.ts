@@ -211,6 +211,8 @@ export default function registerClassesModule({ app, pool }: ClassesModuleContex
   };
 
   const loadClass = async (id: string) => {
+    await ensureClassImageColumns();
+    await ensureLevelColumns();
     const hasDisciplines = await tableExists('Discipline');
     const hasDisciplineLevels = await tableExists('DisciplineLevel');
     const hasStudents = await tableExists('Student');
@@ -439,6 +441,7 @@ export default function registerClassesModule({ app, pool }: ClassesModuleContex
   router.get('/', async (req, res) => {
     try {
       if (!(await ensureActive())) return res.status(409).json({ error: 'Classes module is not active.' });
+      await ensureClassImageColumns();
       const scope = await scopeOf(req);
       const hasDisciplines = await tableExists('Discipline');
 
