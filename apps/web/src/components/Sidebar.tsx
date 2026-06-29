@@ -292,23 +292,11 @@ const Sidebar: React.FC<SidebarProps> = ({
       })
       .catch(() => setOrganization({ id: 'org', name: 'Organization' }));
 
-    fetch(`/api/companies?scope=org&t=${Date.now()}`)
+    fetch(`/api/companies?status=Active&t=${Date.now()}`)
       .then((res) => (res.ok ? res.json() : []))
       .then((data: { id: string; name: string; status?: string | null }[]) => {
-        const allowedSet = new Set<string>([
-          ...allowedCompanyIds,
-          ...(userCompanyId ? [userCompanyId] : [])
-        ].filter(Boolean));
-
         const rows = Array.isArray(data) ? data : [];
-        const filtered = allowedSet.size > 0
-          ? rows.filter((company) => {
-            const status = String(company.status || 'Active').trim().toLowerCase();
-            return allowedSet.has(company.id) && status !== 'inactive' && status !== 'inactivo';
-          })
-          : [];
-
-        setCompanies(filtered);
+        setCompanies(rows);
       })
       .catch(() => setCompanies([]));
   };
