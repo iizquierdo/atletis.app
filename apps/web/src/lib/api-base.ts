@@ -9,6 +9,7 @@
 import { joinApiPath, normalizeApiBase } from './normalize-api-base';
 
 export const API_BASE = normalizeApiBase(import.meta.env.VITE_API_BASE_URL || '');
+const AUTH_STORAGE_KEY = 'sinapsis.auth.session';
 
 const shouldRewrite = (url: string): boolean =>
   url.startsWith('/api/') || url === '/api' || url.startsWith('/storage/') || url === '/storage';
@@ -16,6 +17,42 @@ const shouldRewrite = (url: string): boolean =>
 const rewrite = (url: string): string => {
   if (!API_BASE || !shouldRewrite(url)) return url;
   return joinApiPath(API_BASE, url);
+};
+
+const getUserToken = (): string => {
+  try {
+    const raw = window.localStorage.getItem(AUTH_STORAGE_KEY);
+    return raw ? String(JSON.parse(raw)?.token || '') : '';
+  } catch {
+    return '';
+  }
+};
+
+const isUserApiRequest = (url: string): boolean => {
+  try {
+    const parsed = new URL(url, window.location.origin);
+    const apiBaseOrigin = API_BASE && !API_BASE.startsWith('/') ? new URL(API_BASE).origin : '';
+    const isKnownOrigin = parsed.origin === window.location.origin || (apiBaseOrigin && parsed.origin === apiBaseOrigin);
+    return Boolean(isKnownOrigin && parsed.pathname.startsWith('/api/') && !parsed.pathname.startsWith('/api/admin/'));
+  } catch {
+    return false;
+  }
+};
+
+const withUserAuth = (url: string, init?: RequestInit, fallbackHeaders?: HeadersInit): RequestInit | undefined => {
+  if (!isUserApiRequest(url)) return init;
+  const token = getUserToken();
+  if (!token) return init;
+
+  const headers = new Headers(init?.headers || fallbackHeaders);
+  if (!headers.has('Authorization')) {
+    headers.set('Authorization', `Bearer ${token}`);
+  }
+
+  return {
+    ...(init || {}),
+    headers
+  };
 };
 
 export const apiUrl = (path: string): string => (shouldRewrite(path) ? rewrite(path) : path);
@@ -37,19 +74,24 @@ export const installFetchRewrite = (): void => {
 
   const nativeFetch = window.fetch.bind(window);
   window.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
-    if (typeof input === 'string') return nativeFetch(rewrite(input), init);
+    if (typeof input === 'string') {
+      const next = rewrite(input);
+      return nativeFetch(next, withUserAuth(next, init));
+    }
     if (input instanceof URL) {
       if (input.origin === window.location.origin && shouldRewrite(input.pathname)) {
-        return nativeFetch(rewrite(input.pathname + input.search + input.hash), init);
+        const next = rewrite(input.pathname + input.search + input.hash);
+        return nativeFetch(next, withUserAuth(next, init));
       }
-      return nativeFetch(input, init);
+      return nativeFetch(input, withUserAuth(input.toString(), init));
     }
     const reqUrl = new URL(input.url, window.location.origin);
     if (reqUrl.origin === window.location.origin && shouldRewrite(reqUrl.pathname)) {
-      const next = new Request(rewrite(reqUrl.pathname + reqUrl.search + reqUrl.hash), input);
-      return nativeFetch(next, init);
+      const nextUrl = rewrite(reqUrl.pathname + reqUrl.search + reqUrl.hash);
+      const next = new Request(nextUrl, input);
+      return nativeFetch(next, withUserAuth(nextUrl, init, next.headers));
     }
-    return nativeFetch(input, init);
+    return nativeFetch(input, withUserAuth(input.url, init, input.headers));
   };
 
   const OriginalXHR = window.XMLHttpRequest;
