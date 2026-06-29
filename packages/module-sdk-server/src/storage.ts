@@ -43,6 +43,14 @@ const VALID_PROVIDERS: StorageProvider[] = ['Local', 'S3', 'GoogleCloud', 'Azure
 const asBool = (v: unknown): boolean =>
   v === true || String(v ?? '').trim().toLowerCase() === 'true';
 
+const firstString = (...values: unknown[]): string => {
+  for (const value of values) {
+    const normalized = String(value ?? '').trim();
+    if (normalized) return normalized;
+  }
+  return '';
+};
+
 export const normalizeKey = (key: string): string =>
   String(key || '').replace(/\\/g, '/').replace(/^\/+/, '').replace(/^storage\//, '');
 
@@ -121,10 +129,20 @@ const s3ForcePathStyle = (settings: StorageSettings): boolean => {
 
 const getS3Client = async (settings: StorageSettings) => {
   const { S3Client } = await import('@aws-sdk/client-s3');
-  const endpoint = String(settings.endpoint || '').trim() || undefined;
-  const region = String(settings.region || '').trim() || 'us-east-1';
-  const accessKeyId = String(settings.accessKey || '').trim();
-  const secretAccessKey = String(settings.secretKey || '').trim();
+  const endpoint = firstString(settings.endpoint) || undefined;
+  const region = firstString(settings.region) || 'us-east-1';
+  const accessKeyId = firstString(
+    settings.accessKey,
+    settings.accessKeyId,
+    settings.awsAccessKeyId,
+    settings.AWS_ACCESS_KEY_ID
+  );
+  const secretAccessKey = firstString(
+    settings.secretKey,
+    settings.secretAccessKey,
+    settings.awsSecretAccessKey,
+    settings.AWS_SECRET_ACCESS_KEY
+  );
   const forcePathStyle = s3ForcePathStyle(settings);
 
   const signature = JSON.stringify({ endpoint, region, accessKeyId, forcePathStyle, hasSecret: Boolean(secretAccessKey) });
@@ -141,7 +159,7 @@ const getS3Client = async (settings: StorageSettings) => {
 };
 
 const requireBucket = (settings: StorageSettings): string => {
-  const bucket = String(settings.bucket || '').trim();
+  const bucket = firstString(settings.bucket, settings.bucketName, settings.AWS_BUCKET);
   if (!bucket) throw new Error('S3 storage is selected but no bucket is configured.');
   return bucket;
 };
@@ -299,12 +317,28 @@ export const deleteObject = async (pool: Pool, key: string, config?: StorageConf
 export const testStorageConfig = async (config: StorageConfig): Promise<{ ok: boolean; message: string }> => {
   if (config.provider === 'Local') return { ok: true, message: 'Local storage is always available.' };
   if (config.provider === 'S3') {
+    const testKey = `_storage-tests/${Date.now()}_${Math.random().toString(36).slice(2)}.txt`;
     try {
       const bucket = requireBucket(config.settings);
-      const { HeadBucketCommand } = await import('@aws-sdk/client-s3');
+      const { DeleteObjectCommand, HeadBucketCommand, PutObjectCommand } = await import('@aws-sdk/client-s3');
       const client = await getS3Client(config.settings);
       await (client as { send: (cmd: unknown) => Promise<unknown> }).send(new HeadBucketCommand({ Bucket: bucket }));
-      return { ok: true, message: `Connected to bucket "${bucket}".` };
+      await (client as { send: (cmd: unknown) => Promise<unknown> }).send(
+        new PutObjectCommand({
+          Bucket: bucket,
+          Key: testKey,
+          Body: Buffer.from('storage write test\n', 'utf8'),
+          ContentType: 'text/plain; charset=utf-8'
+        })
+      );
+      try {
+        await (client as { send: (cmd: unknown) => Promise<unknown> }).send(
+          new DeleteObjectCommand({ Bucket: bucket, Key: testKey })
+        );
+      } catch {
+        // The write test succeeded; cleanup failure should not block saving.
+      }
+      return { ok: true, message: `Connected to bucket "${bucket}" and verified write access.` };
     } catch (error: unknown) {
       return { ok: false, message: (error as Error)?.message || 'Failed to reach the S3 bucket.' };
     }

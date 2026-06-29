@@ -106,7 +106,10 @@ const StoragePage: React.FC = () => {
       if (!res.ok || data?.ok === false) {
         throw new Error(data?.message || data?.error || 'Connection test failed');
       }
-      setStatus({ type: 'success', message: data?.message || 'Connection successful.' });
+      setStatus({
+        type: 'success',
+        message: `${data?.message || 'Connection successful.'} Save Storage to apply this configuration to uploads.`
+      });
     } catch (error: unknown) {
       setStatus({
         type: 'error',
@@ -128,7 +131,7 @@ const StoragePage: React.FC = () => {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || 'Failed to save storage settings');
-      setStatus({ type: 'success', message: 'Storage settings saved successfully.' });
+      setStatus({ type: 'success', message: 'Storage settings saved successfully. New uploads will use this provider.' });
     } catch (error: unknown) {
       setStatus({
         type: 'error',
