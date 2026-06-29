@@ -10,6 +10,14 @@ const normalizeKey = (key: string): string =>
     .replace(/^\/+/, "")
     .replace(/^storage\//, "");
 
+const apiBaseUrl = String(import.meta.env.VITE_API_URL || "/api").replace(/\/+$/, "");
+
+const storageUrl = (key: string): string => {
+  const normalized = normalizeKey(key);
+  if (!apiBaseUrl || apiBaseUrl === "/api") return `/storage/${normalized}`;
+  return `${apiBaseUrl}/storage/${normalized}`;
+};
+
 /** Extract the object key from any URL format we may have stored in the DB. */
 export const extractObjectKey = (storedUrl: string): string | null => {
   const url = String(storedUrl || "").trim();
@@ -48,7 +56,7 @@ export const resolveMediaUrl = (raw?: string | null): string | null => {
   if (!url) return null;
 
   const key = extractObjectKey(url);
-  if (key) return `/storage/${key}`;
+  if (key) return storageUrl(key);
 
   if (url.startsWith("http://") || url.startsWith("https://")) {
     const storageIdx = url.indexOf("/storage/");
@@ -57,5 +65,5 @@ export const resolveMediaUrl = (raw?: string | null): string | null => {
   }
 
   if (url.startsWith("/")) return url.split("?")[0] || null;
-  return `/storage/${normalizeKey(url)}`;
+  return storageUrl(url);
 };
