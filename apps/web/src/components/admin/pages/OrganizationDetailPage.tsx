@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Building2, Globe, Mail, MapPin, Pencil } from 'lucide-react';
+import { Building2, Globe, Mail, MapPin, Pencil, Shield, Users } from 'lucide-react';
 import { adminFetch } from '../api';
 import { Button } from '@/components/ui/button';
 import ProfileHeader from '@/components/shared/ProfileHeader';
@@ -45,7 +45,20 @@ interface ParentRow {
   organizationId: string;
 }
 
-type Tab = 'overview' | 'profesores' | 'padres';
+interface UserRow {
+  id: string;
+  firstName: string | null;
+  lastName: string | null;
+  name: string | null;
+  email: string;
+  role: string | null;
+  roleName: string | null;
+  companyName: string | null;
+  emailVerifiedAt: string | null;
+  createdAt: string;
+}
+
+type Tab = 'overview' | 'usuarios' | 'profesores' | 'padres';
 
 const InfoCell: React.FC<{ label: string; value?: string | null }> = ({ label, value }) => (
   <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
@@ -59,6 +72,7 @@ const OrganizationDetailPage: React.FC = () => {
   const navigate = useNavigate();
 
   const [org, setOrg] = useState<OrgDetail | null>(null);
+  const [users, setUsers] = useState<UserRow[]>([]);
   const [teachers, setTeachers] = useState<TeacherRow[]>([]);
   const [parents, setParents] = useState<ParentRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -70,14 +84,18 @@ const OrganizationDetailPage: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      const [orgRes, teachersRes, parentsRes] = await Promise.all([
+      const [orgRes, usersRes, teachersRes, parentsRes] = await Promise.all([
         adminFetch(`/api/admin/organizations/${id}`),
+        adminFetch(`/api/admin/organizations/${id}/users`),
         adminFetch('/api/admin/teachers'),
         adminFetch('/api/admin/parents')
       ]);
       if (!orgRes.ok) throw new Error('Organización no encontrada');
       const orgData = await orgRes.json();
       setOrg(orgData);
+
+      const usersData = usersRes.ok ? await usersRes.json() : [];
+      setUsers(Array.isArray(usersData) ? usersData : []);
 
       const teachersData = teachersRes.ok ? await teachersRes.json() : [];
       setTeachers((Array.isArray(teachersData) ? teachersData : []).filter((t: TeacherRow) => t.organizationId === id));
@@ -131,6 +149,7 @@ const OrganizationDetailPage: React.FC = () => {
         ]}
         tabs={[
           { id: 'overview', label: 'Información' },
+          { id: 'usuarios', label: `Usuarios (${users.length})` },
           { id: 'profesores', label: `Profesores (${teachers.length})` },
           { id: 'padres', label: `Padres (${parents.length})` }
         ]}
@@ -162,6 +181,44 @@ const OrganizationDetailPage: React.FC = () => {
             <InfoCell label="Ciudad" value={org.city} />
             <InfoCell label="País" value={org.country} />
             <InfoCell label="Creada" value={new Date(org.createdAt).toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: 'numeric' })} />
+          </div>
+        )}
+
+        {activeTab === 'usuarios' && (
+          <div className="space-y-2">
+            {users.length === 0 ? (
+              <p className="rounded-xl bg-slate-50 px-4 py-8 text-center text-sm text-slate-400">Sin usuarios en esta organización</p>
+            ) : (
+              users.map((u) => {
+                const fullName = [u.firstName, u.lastName].filter(Boolean).join(' ') || u.name || u.email;
+                const initials = fullName.trim().split(/\s+/).slice(0, 2).map((w) => w[0].toUpperCase()).join('');
+                const roleLabel = u.roleName || u.role || 'Sin rol';
+                return (
+                  <div key={u.id} className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 sm:flex-row sm:items-center">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-sm font-bold text-slate-600">
+                      {initials}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-semibold text-slate-900">{fullName}</p>
+                      <p className="truncate text-xs text-slate-400">{u.email}{u.companyName ? ` · ${u.companyName}` : ''}</p>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2 text-xs">
+                      <span className="inline-flex items-center gap-1 rounded-lg bg-slate-50 px-2.5 py-1 font-semibold text-slate-600">
+                        <Shield className="size-3" /> {roleLabel}
+                      </span>
+                      <span className="inline-flex items-center gap-1 rounded-lg bg-blue-50 px-2.5 py-1 font-semibold text-blue-600">
+                        <Users className="size-3" /> {new Date(u.createdAt).toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: 'numeric' })}
+                      </span>
+                      {u.emailVerifiedAt ? (
+                        <span className="rounded-lg bg-emerald-50 px-2.5 py-1 font-semibold text-emerald-600">Verificado</span>
+                      ) : (
+                        <span className="rounded-lg bg-amber-50 px-2.5 py-1 font-semibold text-amber-600">Pendiente</span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })
+            )}
           </div>
         )}
 

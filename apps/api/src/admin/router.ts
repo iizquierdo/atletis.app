@@ -524,6 +524,42 @@ export const createAdminRouter = async ({ prisma, pool }: CreateAdminRouterArgs)
     }
   });
 
+  router.get('/organizations/:id/users', async (req, res) => {
+    try {
+      const id = String(req.params.id || '').trim();
+      if (!id) return res.status(400).json({ error: 'id is required' });
+
+      const orgExists = await pool.query('SELECT id FROM "Organization" WHERE id = $1 LIMIT 1', [id]);
+      if (!orgExists.rows[0]) return res.status(404).json({ error: 'Organization not found' });
+
+      const result = await pool.query(
+        `SELECT u.id,
+                u.email,
+                u.name,
+                u."firstName",
+                u."lastName",
+                u.role,
+                u."roleId",
+                COALESCE(r.name, '') AS "roleName",
+                u."companyId",
+                c.name AS "companyName",
+                u."emailVerifiedAt",
+                u."createdAt",
+                u."updatedAt"
+         FROM "User" u
+         JOIN "Company" c ON c.id = u."companyId"
+         LEFT JOIN "Role" r ON r.id = u."roleId"
+         WHERE c."organizationId" = $1
+         ORDER BY COALESCE(NULLIF(u.name, ''), u.email) ASC, u.email ASC`,
+        [id]
+      );
+
+      return res.json(result.rows);
+    } catch (error: any) {
+      return res.status(500).json({ error: 'Failed to fetch organization users', details: error?.message || String(error) });
+    }
+  });
+
   router.put('/organizations/:id', async (req, res) => {
     try {
       const id = String(req.params.id || '').trim();

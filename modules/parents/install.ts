@@ -24,11 +24,13 @@ export default async function installParentsModule(ctx: InstallContext) {
   await pool.query('ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "document" TEXT');
 
   await ensureRole(pool, NATACION_ROLES.SUPER_ADMIN, 'Acceso total al sistema');
+  await ensureRole(pool, NATACION_ROLES.ADMINISTRADOR, 'Gestión administrativa');
   await ensureRole(pool, NATACION_ROLES.ADMIN_SEDE, 'Administrador de una sede');
   await ensureRole(pool, NATACION_ROLES.TUTOR, 'Tutor / responsable de alumno');
 
-  // Only staff (Super Admin / Admin Sede) manage parents.
+  // Only staff (Super Admin / Administrador / Admin Sede) manage parents.
   await grantModulePermission(pool, { roleName: NATACION_ROLES.SUPER_ADMIN, moduleCode, canRead: true, canCreate: true, canWrite: true, canDelete: true });
+  await grantModulePermission(pool, { roleName: NATACION_ROLES.ADMINISTRADOR, moduleCode, canRead: true, canCreate: true, canWrite: true, canDelete: true });
   await grantModulePermission(pool, { roleName: NATACION_ROLES.ADMIN_SEDE, moduleCode, canRead: true, canCreate: true, canWrite: true, canDelete: true });
 
   await seedModuleMenu(pool, {

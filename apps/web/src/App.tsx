@@ -199,7 +199,15 @@ const App: React.FC = () => {
   const readableModuleCodes = useMemo(() => {
     const permissions = currentUser?.roleRef?.permissions || [];
     const legacyRole = String(currentUser?.role || '').trim().toLowerCase();
-    const hasAdminRole = legacyRole === 'administrator' || legacyRole === 'admin';
+    const roleName = String(currentUser?.roleRef?.name || '').trim().toLowerCase();
+    const hasAdminRole =
+      legacyRole === 'administrator' ||
+      legacyRole === 'admin' ||
+      legacyRole === 'administrador' ||
+      roleName === 'administrator' ||
+      roleName === 'admin' ||
+      roleName === 'administrador' ||
+      roleName === 'super admin';
 
     if (hasAdminRole) {
       return activeModuleCodes;

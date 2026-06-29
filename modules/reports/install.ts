@@ -10,6 +10,7 @@ interface InstallContext {
 
 const ROLES = {
   SUPER_ADMIN: 'Super Admin',
+  ADMINISTRADOR: 'Administrador',
   ADMIN_SEDE: 'Admin Sede',
   PROFESOR: 'Profesor',
 } as const;
@@ -77,10 +78,12 @@ export default async function installReportsModule({ pool, moduleCode, moduleNam
   await ensureSystemModule(pool, moduleCode, moduleName, moduleDescription ?? null);
 
   await ensureRole(pool, ROLES.SUPER_ADMIN, 'Acceso total al sistema');
+  await ensureRole(pool, ROLES.ADMINISTRADOR, 'Gestión administrativa');
   await ensureRole(pool, ROLES.ADMIN_SEDE,  'Administrador de una sede');
   await ensureRole(pool, ROLES.PROFESOR,    'Profesor / staff técnico');
 
   await grantPermission(pool, ROLES.SUPER_ADMIN, moduleCode, { canRead: true, canCreate: true, canWrite: true, canDelete: true });
+  await grantPermission(pool, ROLES.ADMINISTRADOR, moduleCode, { canRead: true, canCreate: true, canWrite: true, canDelete: true });
   await grantPermission(pool, ROLES.ADMIN_SEDE,  moduleCode, { canRead: true, canCreate: true, canWrite: true, canDelete: true });
   await grantPermission(pool, ROLES.PROFESOR,    moduleCode, { canRead: true, canCreate: true, canWrite: true });
 

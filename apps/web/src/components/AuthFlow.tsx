@@ -77,17 +77,13 @@ const AuthFlow: React.FC<AuthFlowProps> = ({
       if (!res.ok) {
         const serverError = String(data?.error || '').trim();
         if (serverError.toLowerCase() === 'invalid credentials.') {
-          throw new Error('Invalid credentials. Passwords are case-sensitive.');
+          throw new Error(t('auth.invalidCredentials'));
         }
         throw new Error(serverError || `${t('auth.signIn')} failed`);
       }
       onLoginSuccess({ token: data.token, user: data.user });
     } catch (err: any) {
-      // #region agent log
-      const _dbgStack = String((err as any)?.stack || '').slice(0, 2000);
-      localStorage.setItem('dbg-902272-login-err', JSON.stringify({ msg: err?.message, stack: _dbgStack, ts: Date.now() }));
-      // #endregion
-      setError(`${err.message || `${t('auth.signIn')} failed`} || STACK: ${_dbgStack.slice(0, 300)}`);
+      setError(err.message || t('auth.loginFailed'));
     } finally {
       setIsLoading(false);
     }

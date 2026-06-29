@@ -1074,7 +1074,15 @@ const moduleAuthorizationMiddleware = (moduleCode: string) => {
 
             const legacyRole = String(user.role || '').trim().toLowerCase();
             const roleName = String(user.roleName || '').trim().toLowerCase();
-            if (legacyRole === 'administrator' || legacyRole === 'admin') {
+            if (
+                legacyRole === 'administrator' ||
+                legacyRole === 'admin' ||
+                legacyRole === 'administrador' ||
+                roleName === 'administrator' ||
+                roleName === 'admin' ||
+                roleName === 'administrador' ||
+                roleName === 'super admin'
+            ) {
                 return next();
             }
 
