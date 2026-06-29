@@ -127,8 +127,8 @@ const Sidebar: React.FC<SidebarProps> = ({
   const { t } = useTranslation();
   const [selectedMain, setSelectedMain] = useState<string>('dashboard');
   const [isCompanyOpen, setIsCompanyOpen] = useState(false);
-  const [organization, setOrganization] = useState<{ id: string; name: string } | null>(null);
-  const [companies, setCompanies] = useState<{ id: string; name: string }[]>([]);
+  const [organization, setOrganization] = useState<{ id: string; name: string } | null>({ id: 'org', name: 'Organization' });
+  const [companies, setCompanies] = useState<{ id: string; name: string; status?: string | null }[]>([]);
   const [menuConfigGroups, setMenuConfigGroups] = useState<MenuConfigGroup[]>([]);
 
   const activeCodeSet = useMemo(
@@ -282,20 +282,30 @@ const Sidebar: React.FC<SidebarProps> = ({
 
   const fetchData = () => {
     fetch('/api/organization')
-      .then((res) => res.json())
-      .then((data) => setOrganization(data))
-      .catch(() => setOrganization({ id: 'org', name: 'Sinapsis Org' }));
+      .then((res) => {
+        if (!res.ok) throw new Error('Failed to fetch organization');
+        return res.json();
+      })
+      .then((data) => {
+        const name = String(data?.name || '').trim();
+        setOrganization({ id: String(data?.id || 'org'), name: name || 'Organization' });
+      })
+      .catch(() => setOrganization({ id: 'org', name: 'Organization' }));
 
-    fetch('/api/companies?status=Active')
+    fetch(`/api/companies?scope=org&t=${Date.now()}`)
       .then((res) => (res.ok ? res.json() : []))
-      .then((data: { id: string; name: string }[]) => {
+      .then((data: { id: string; name: string; status?: string | null }[]) => {
         const allowedSet = new Set<string>([
           ...allowedCompanyIds,
           ...(userCompanyId ? [userCompanyId] : [])
         ].filter(Boolean));
 
+        const rows = Array.isArray(data) ? data : [];
         const filtered = allowedSet.size > 0
-          ? data.filter((company) => allowedSet.has(company.id))
+          ? rows.filter((company) => {
+            const status = String(company.status || 'Active').trim().toLowerCase();
+            return allowedSet.has(company.id) && status !== 'inactive' && status !== 'inactivo';
+          })
           : [];
 
         setCompanies(filtered);
@@ -331,7 +341,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   const railBackground = (sidebarBackgroundColor || '#000000').trim() || '#000000';
 
   const selectedItemName = selectedCompanyId === 'org'
-    ? (organization?.name || 'Loading...')
+    ? (organization?.name || 'Organization')
     : (companies.find((c) => c.id === selectedCompanyId)?.name || 'Select Company');
 
   useEffect(() => {

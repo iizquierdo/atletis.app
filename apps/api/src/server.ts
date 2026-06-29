@@ -3075,6 +3075,7 @@ app.post('/api/auth/register', async (req, res) => {
                     data: {
                         name: org.name,
                         organizationId: org.id,
+                        status: 'Active',
                         dateFormat: org.dateFormat,
                         timeFormat: org.timeFormat,
                         timezone: org.timezone,
@@ -3102,9 +3103,10 @@ app.post('/api/auth/register', async (req, res) => {
                         companyId: company.id
                     }
                 });
+                const initialAccessCompanyIds = ['org', company.id];
                 await tx.$executeRaw`
                     UPDATE "User"
-                       SET "accessCompanyIds" = ${['org', company.id].join(',')},
+                       SET "accessCompanyIds" = ${initialAccessCompanyIds.join(',')},
                            "updatedAt" = NOW()
                      WHERE id = ${user.id}
                 `;
