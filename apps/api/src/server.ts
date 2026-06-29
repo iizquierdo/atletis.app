@@ -128,6 +128,12 @@ app.get('/api/public/core', async (req, res) => {
   }
 });
 
+app.get('/api/public/install-config', (_req, res) => {
+  const parentUrl = String(process.env.VITE_PWA_PARENT_URL || process.env.PWA_PARENT_URL || '').trim();
+  const professorUrl = String(process.env.VITE_PWA_PROFESSOR_URL || process.env.PWA_PROFESSOR_URL || '').trim();
+  res.json({ parentUrl, professorUrl });
+});
+
 app.use('/api/admin', await createAdminRouter({ prisma, pool }));
 
 interface ModuleApiRegistration {

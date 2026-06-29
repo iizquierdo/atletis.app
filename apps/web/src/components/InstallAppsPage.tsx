@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { BookOpen, Chrome, ExternalLink, GraduationCap, Monitor, Share, Smartphone } from 'lucide-react';
 
@@ -6,8 +6,8 @@ type Platform = 'android' | 'ios' | 'browser';
 
 const trimTrailingSlash = (value: string) => String(value || '').replace(/\/+$/, '');
 
-const configuredParentUrl = trimTrailingSlash(import.meta.env.VITE_PWA_PARENT_URL || 'http://localhost:13510');
-const configuredProfessorUrl = trimTrailingSlash(import.meta.env.VITE_PWA_PROFESSOR_URL || 'http://localhost:13511');
+const fallbackParentUrl = trimTrailingSlash(import.meta.env.VITE_PWA_PARENT_URL || 'http://localhost:13510');
+const fallbackProfessorUrl = trimTrailingSlash(import.meta.env.VITE_PWA_PROFESSOR_URL || 'http://localhost:13511');
 
 const detectPlatform = (): Platform => {
   if (typeof navigator === 'undefined') return 'browser';
@@ -20,20 +20,20 @@ const detectPlatform = (): Platform => {
   return 'browser';
 };
 
-const appCards = [
+const buildAppCards = (urls: { parentUrl: string; professorUrl: string }) => [
   {
     key: 'parents',
     title: 'App Familias',
     description: 'Acceso para madres, padres y tutores.',
     icon: BookOpen,
-    baseUrl: configuredParentUrl,
+    baseUrl: urls.parentUrl,
   },
   {
     key: 'professors',
     title: 'App Profesores',
     description: 'Acceso para docentes y equipo técnico.',
     icon: GraduationCap,
-    baseUrl: configuredProfessorUrl,
+    baseUrl: urls.professorUrl,
   },
 ] as const;
 
@@ -41,11 +41,35 @@ const InstallAppsPage: React.FC = () => {
   const { organizationId } = useParams<{ organizationId: string }>();
   const orgId = String(organizationId || '').trim();
   const platform = useMemo(() => detectPlatform(), []);
+  const [appUrls, setAppUrls] = useState({
+    parentUrl: fallbackParentUrl,
+    professorUrl: fallbackProfessorUrl,
+  });
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/public/install-config')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (cancelled || !data) return;
+        setAppUrls({
+          parentUrl: trimTrailingSlash(data.parentUrl || fallbackParentUrl),
+          professorUrl: trimTrailingSlash(data.professorUrl || fallbackProfessorUrl),
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setAppUrls({ parentUrl: fallbackParentUrl, professorUrl: fallbackProfessorUrl });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const platformLabel = platform === 'android' ? 'Android' : platform === 'ios' ? 'iOS' : 'Navegador';
   const PlatformIcon = platform === 'browser' ? Monitor : Smartphone;
 
   const buildInstallUrl = (baseUrl: string) => `${baseUrl}/install/${encodeURIComponent(orgId)}`;
+  const appCards = useMemo(() => buildAppCards(appUrls), [appUrls]);
 
   return (
     <div className="min-h-screen bg-slate-50 px-4 py-8 text-slate-900">
