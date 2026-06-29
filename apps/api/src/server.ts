@@ -3099,10 +3099,15 @@ app.post('/api/auth/register', async (req, res) => {
                         password,
                         role: 'Administrator',
                         roleId: adminRole?.id ?? null,
-                        companyId: company.id,
-                        accessCompanyIds: ['org', company.id]
+                        companyId: company.id
                     }
                 });
+                await tx.$executeRaw`
+                    UPDATE "User"
+                       SET "accessCompanyIds" = ${['org', company.id].join(',')},
+                           "updatedAt" = NOW()
+                     WHERE id = ${user.id}
+                `;
 
                 return user.id;
             });
