@@ -130,7 +130,7 @@ const mapStudentSummary = (raw: any, catalog: CatalogDiscipline[]): StudentSumma
   id: String(raw.id),
   firstName: raw.firstName || "",
   lastName: raw.lastName || "",
-  imageUrl: raw.imageUrl ?? null,
+  imageUrl: resolveMediaUrl(raw.imageUrl ?? null),
   status: raw.status === "INACTIVE" ? "INACTIVE" : "ACTIVE",
   sede: raw.companyId ? { id: String(raw.companyId), name: raw.companyName || "Sede" } : null,
   disciplines: Array.isArray(raw.disciplines)

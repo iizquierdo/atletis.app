@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { StudentSummary } from "../types";
+import { resolveMediaUrl } from "../lib/media";
 
 const getInitials = (student: Pick<StudentSummary, "firstName" | "lastName">) =>
   `${student.firstName.charAt(0)}${student.lastName.charAt(0)}`.toUpperCase();
@@ -31,7 +32,8 @@ export const StudentAvatar = ({
   const [imgFailed, setImgFailed] = useState(false);
   const rounded = shape === "circle" ? "rounded-full" : "rounded-2xl";
   const initials = getInitials(student);
-  const showImage = Boolean(student.imageUrl) && !imgFailed;
+  const imageSrc = resolveMediaUrl(student.imageUrl);
+  const showImage = Boolean(imageSrc) && !imgFailed;
 
   if (showImage) {
     return (
@@ -39,7 +41,7 @@ export const StudentAvatar = ({
         alt={`${student.firstName} ${student.lastName}`}
         className={`${size} ${rounded} shrink-0 object-cover ${className}`}
         onError={() => setImgFailed(true)}
-        src={student.imageUrl!}
+        src={imageSrc!}
       />
     );
   }

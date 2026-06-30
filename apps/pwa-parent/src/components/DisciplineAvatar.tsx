@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { resolveMediaUrl } from "../lib/media";
 import { MaterialIcon } from "./MaterialIcon";
 
 interface DisciplineAvatarProps {
@@ -17,7 +18,8 @@ export const DisciplineAvatar = ({
   className = ""
 }: DisciplineAvatarProps) => {
   const [imgFailed, setImgFailed] = useState(false);
-  const showImage = Boolean(imageUrl) && !imgFailed;
+  const imageSrc = resolveMediaUrl(imageUrl);
+  const showImage = Boolean(imageSrc) && !imgFailed;
 
   if (showImage) {
     return (
@@ -25,7 +27,7 @@ export const DisciplineAvatar = ({
         alt={name}
         className={`${size} shrink-0 rounded-xl object-cover ${className}`}
         onError={() => setImgFailed(true)}
-        src={imageUrl!}
+        src={imageSrc!}
       />
     );
   }
