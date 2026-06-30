@@ -279,10 +279,7 @@ const PostCard = ({ post, onToggleLike, onDelete, currentUser }: PostCardProps) 
       (title === body || title === firstLine || firstLine.startsWith(title) || title.startsWith(firstLine))
   );
   const distinctTitle = Boolean(title && !titleDuplicatesFirstLine);
-  const displayBody = titleDuplicatesFirstLine
-    ? body.slice(firstLine.length).replace(/^\s+/, "")
-    : body;
-  const isLong = displayBody.length > CONTENT_THRESHOLD;
+  const isLong = body.length > CONTENT_THRESHOLD;
   const isAuthor = Boolean(
     currentUser.id && post.author.id && String(post.author.id) === String(currentUser.id)
   );
@@ -391,14 +388,14 @@ const PostCard = ({ post, onToggleLike, onDelete, currentUser }: PostCardProps) 
       )}
 
       <div className="px-3.5 pb-2.5">
-        {displayBody && (
+        {body && (
           expanded || !isLong ? (
             <p className="whitespace-pre-line text-[13px] leading-relaxed text-slate-600">
-              {displayBody}
+              {body}
             </p>
           ) : (
             <p className="line-clamp-3 text-[13px] leading-relaxed text-slate-600">
-              {displayBody.replace(/\n/g, " ")}
+              {body.replace(/\n/g, " ")}
             </p>
           )
         )}
