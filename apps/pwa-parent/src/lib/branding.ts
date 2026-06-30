@@ -33,7 +33,7 @@ export const readBrandingFromStorage = (): BrandingSnapshot => {
       appName: str(parsed.appName) ?? DEFAULT_BRANDING.appName,
       logoUrl: str(parsed.logoUrl) ?? DEFAULT_BRANDING.logoUrl,
       isologoUrl: str(parsed.isologoUrl),
-      faviconUrl: str(parsed.faviconUrl) ?? str(parsed.isologoUrl) ?? str(parsed.logoUrl) ?? DEFAULT_BRANDING.logoUrl,
+      faviconUrl: str(parsed.faviconUrl),
       loginBackgroundUrl: str(parsed.loginBackgroundUrl)
     };
   } catch {
@@ -50,7 +50,7 @@ export const saveBrandingToStorage = (
     appName: settings.appName,
     logoUrl: settings.logoUrl ?? null,
     isologoUrl: settings.isologoUrl ?? null,
-    faviconUrl: settings.faviconUrl ?? settings.isologoUrl ?? settings.logoUrl ?? null,
+    faviconUrl: settings.faviconUrl ?? null,
     loginBackgroundUrl: settings.loginBackgroundUrl ?? null
   };
 

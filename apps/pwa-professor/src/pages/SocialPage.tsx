@@ -265,7 +265,6 @@ const PostCard = ({ post, onToggleLike, onDelete, currentUser }: PostCardProps) 
 
   const media = getMediaAttachment(post);
   const docs = getDocAttachments(post);
-  const isLong = post.content.length > CONTENT_THRESHOLD;
   const liked = post.likedByMe ?? false;
   const likeCount = post.likesCount ?? post.localLikes ?? 0;
   const localImages = post.localMedia?.filter((m) => m.kind === "image" || m.kind === "video") ?? [];
@@ -274,7 +273,16 @@ const PostCard = ({ post, onToggleLike, onDelete, currentUser }: PostCardProps) 
   const title = post.title.trim();
   const firstLine = body.split("\n")[0]?.trim() ?? "";
   /** Título aparte solo si es distinto del cuerpo (evita duplicar en posts de una línea). */
-  const distinctTitle = Boolean(title && title !== body && title !== firstLine);
+  const titleDuplicatesFirstLine = Boolean(
+    title &&
+      firstLine &&
+      (title === body || title === firstLine || firstLine.startsWith(title) || title.startsWith(firstLine))
+  );
+  const distinctTitle = Boolean(title && !titleDuplicatesFirstLine);
+  const displayBody = titleDuplicatesFirstLine
+    ? body.slice(firstLine.length).replace(/^\s+/, "")
+    : body;
+  const isLong = displayBody.length > CONTENT_THRESHOLD;
   const isAuthor = Boolean(
     currentUser.id && post.author.id && String(post.author.id) === String(currentUser.id)
   );
@@ -383,14 +391,14 @@ const PostCard = ({ post, onToggleLike, onDelete, currentUser }: PostCardProps) 
       )}
 
       <div className="px-3.5 pb-2.5">
-        {body && (
+        {displayBody && (
           expanded || !isLong ? (
             <p className="whitespace-pre-line text-[13px] leading-relaxed text-slate-600">
-              {body}
+              {displayBody}
             </p>
           ) : (
             <p className="line-clamp-3 text-[13px] leading-relaxed text-slate-600">
-              {body.replace(/\n/g, " ")}
+              {displayBody.replace(/\n/g, " ")}
             </p>
           )
         )}

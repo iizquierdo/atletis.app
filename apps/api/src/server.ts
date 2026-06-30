@@ -113,7 +113,6 @@ app.get('/api/public/core', async (req, res) => {
           if (org.appName) (payload as Record<string, unknown>).appName = org.appName;
           if (org.logoUrl) (payload as Record<string, unknown>).logoUrl = org.logoUrl;
           if (org.isologoUrl) (payload as Record<string, unknown>).isologoUrl = org.isologoUrl;
-          if (org.faviconUrl) (payload as Record<string, unknown>).faviconUrl = org.faviconUrl;
           if (org.primaryColor) (payload as Record<string, unknown>).primaryColor = org.primaryColor;
           if (org.secondaryColor) (payload as Record<string, unknown>).secondaryColor = org.secondaryColor;
         }

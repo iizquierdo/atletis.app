@@ -707,7 +707,7 @@ export const fetchPublicBranding = async (): Promise<GlobalSettings | null> => {
       appName: (data.appName as string) || "Natación",
       logoUrl: resolveMediaUrl((data.logoUrl ?? data.sidebarLogoUrl) as string | null),
       isologoUrl: resolveMediaUrl(data.isologoUrl as string | null),
-      faviconUrl: resolveMediaUrl((data.faviconUrl ?? data.isologoUrl ?? data.logoUrl ?? data.sidebarLogoUrl) as string | null),
+      faviconUrl: resolveMediaUrl(data.faviconUrl as string | null),
       loginBackgroundUrl: resolveMediaUrl(data.loginBackgroundUrl as string | null),
       primaryColor: (data.primaryColor as string) || "#00666d",
       secondaryColor: (data.secondaryColor as string) || "#874e00",
