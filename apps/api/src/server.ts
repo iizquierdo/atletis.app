@@ -1105,10 +1105,16 @@ const moduleAuthorizationMiddleware = (moduleCode: string) => {
             if (isProfesor && moduleCodeUpper === 'COMMUNITIES') {
                 return next();
             }
+            if (isProfesor && moduleCodeUpper === 'STUDENTS') {
+                return next();
+            }
 
             // Tutors/parents may like and comment on posts in their children's communities
             const isTutor = legacyRole === 'tutor' || roleName === 'tutor';
             if (isTutor && isCommunitySocialInteraction) {
+                return next();
+            }
+            if (isTutor && moduleCodeUpper === 'STUDENTS') {
                 return next();
             }
 

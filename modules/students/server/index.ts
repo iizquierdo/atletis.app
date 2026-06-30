@@ -662,8 +662,24 @@ export default function registerStudentsModule({ app, pool }: StudentsModuleCont
       await pool.query('INSERT INTO "Conversation" (id, "studentId", subject, status, "createdById", "createdAt", "updatedAt") VALUES ($1,$2,$3,$4,$5,NOW(),NOW())', [
         id, studentId, String(req.body?.subject || '').trim() || null, String(req.body?.status || 'OPEN').trim(), scope!.userId
       ]);
-      // creator + requested participants
-      const participantIds = new Set<string>([scope!.userId, ...((Array.isArray(req.body?.participantIds) ? req.body.participantIds : []).map((x: any) => String(x || '').trim()).filter(Boolean))]);
+      // creator + requested participants. When a teacher starts a student chat
+      // from the PWA, include the active tutors automatically.
+      const participantIds = new Set<string>([
+        scope!.userId,
+        ...((Array.isArray(req.body?.participantIds) ? req.body.participantIds : [])
+          .map((x: any) => String(x || '').trim())
+          .filter(Boolean))
+      ]);
+      if (scope?.isProfesor && await tableExists('StudentTutor')) {
+        const tutors = await pool.query(
+          'SELECT "tutorId" FROM "StudentTutor" WHERE "studentId" = $1 AND active = true',
+          [studentId]
+        );
+        for (const tutor of tutors.rows) {
+          const tutorId = String(tutor.tutorId || '').trim();
+          if (tutorId) participantIds.add(tutorId);
+        }
+      }
       for (const uid of participantIds) {
         await pool.query('INSERT INTO "ConversationParticipant" (id, "conversationId", "userId", active, "joinedAt") VALUES ($1,$2,$3,true,NOW()) ON CONFLICT ("conversationId","userId") DO NOTHING', [crypto.randomUUID(), id, uid]);
       }
