@@ -1430,6 +1430,22 @@ const normalizeBrandingAssetUrls = async (row: Record<string, unknown> | undefin
     return normalized;
 };
 
+app.get('/api/public/organizations/:id/branding', async (req, res) => {
+    try {
+        const id = String(req.params.id || '').trim();
+        if (!id) return res.status(400).json({ error: 'id is required' });
+        await ensureOrganizationColumns();
+        const result = await pool.query(
+            `SELECT id AS "organizationId","appName","logoUrl","isologoUrl","faviconUrl","primaryColor","secondaryColor","backgroundImageUrl","slogan" FROM "Organization" WHERE id = $1 LIMIT 1`,
+            [id]
+        );
+        if (!result.rows[0]) return res.status(404).json({ error: 'Organization not found' });
+        res.json(await normalizeBrandingAssetUrls(result.rows[0]));
+    } catch (error: any) {
+        res.status(500).json({ error: 'Failed to fetch public branding', details: error.message });
+    }
+});
+
 app.get('/api/organization/branding', async (req, res) => {
     try {
         const ctx = await loadTenantAuthContext(req, res);
