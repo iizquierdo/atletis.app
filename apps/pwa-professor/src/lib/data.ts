@@ -13,6 +13,8 @@ import type {
   StudentSummary,
   StudentTutorRef,
   ProfessorClass,
+  ProfessorClassDetail,
+  ProfessorClassLevel,
   ClassScheduleSlot,
   Discipline,
   DisciplineLevel,
@@ -178,6 +180,18 @@ const mapStudentSummary = (raw: Record<string, unknown>, catalog: CatalogDiscipl
   email: (raw.email as string) || null,
   imageUrl: resolveStudentImageUrl(raw),
   tutors: mapTutors(raw.tutors),
+  classes: Array.isArray(raw.classes)
+    ? (raw.classes as Record<string, unknown>[]).map((c) => ({
+        id: String(c.id || c.classId || ""),
+        classId: String(c.classId || c.id || ""),
+        name: String(c.name || "Clase"),
+        disciplineId: (c.disciplineId as string) ?? null,
+        disciplineName: (c.disciplineName as string) ?? null,
+        levelId: (c.levelId as string) ?? null,
+        levelName: (c.levelName as string) ?? null,
+        status: String(c.status || "ACTIVE")
+      })).filter((c) => c.classId)
+    : undefined,
   disciplines: Array.isArray(raw.disciplines)
     ? (raw.disciplines as Record<string, unknown>[]).map((d) => {
         const disc = catalog.find((c) => c.id === d.disciplineId);
@@ -245,6 +259,94 @@ export const fetchMyClasses = async (): Promise<ProfessorClass[]> => {
         : undefined
     };
   });
+};
+
+const normalizeLevelObjectives = (objectives: unknown): ProfessorClassLevel["objectives"] =>
+  (Array.isArray(objectives) ? objectives : [])
+    .map((objective) => {
+      const row = objective as Record<string, unknown>;
+      return {
+        id: String(row.id || crypto.randomUUID()),
+        title: String(row.title || "").trim(),
+        completed: Boolean(row.completed)
+      };
+    })
+    .filter((objective) => objective.title);
+
+const mapClassLevel = (raw: Record<string, unknown>): ProfessorClassLevel => ({
+  id: String(raw.id || ""),
+  name: String(raw.name || "Nivel"),
+  description: (raw.description as string) ?? null,
+  levelOrder: Number(raw.levelOrder ?? 0),
+  color: (raw.color as string) ?? null,
+  active: raw.active !== false,
+  imageUrl: (raw.imageUrl as string) ?? null,
+  objectives: normalizeLevelObjectives(raw.objectives)
+});
+
+export const fetchClassDetail = async (classId: string): Promise<ProfessorClassDetail> => {
+  const { data } = await api.get<Record<string, unknown>>(`/classes/${classId}`);
+  const disc = data.discipline as Record<string, unknown> | null;
+  return {
+    id: String(data.id),
+    name: String(data.name || "Clase"),
+    discipline: {
+      id: String(disc?.id || data.disciplineId || ""),
+      name: String(data.disciplineName || disc?.name || "Disciplina"),
+      active: true
+    } as Discipline,
+    level: null,
+    schedule: "",
+    studentCount: Array.isArray(data.students) ? data.students.length : 0,
+    sede: data.companyId ? { id: String(data.companyId), name: String(data.companyName || "Sede") } : null,
+    schedules: Array.isArray(data.schedules)
+      ? (data.schedules as Record<string, unknown>[]).map((s): ClassScheduleSlot => ({
+          dayOfWeek: Number(s.dayOfWeek),
+          startTime: String(s.startTime || ""),
+          endTime: String(s.endTime || "")
+        }))
+      : undefined,
+    ownLevels: Array.isArray(data.ownLevels) ? (data.ownLevels as Record<string, unknown>[]).map(mapClassLevel) : [],
+    inheritedLevels: Array.isArray(data.inheritedLevels) ? (data.inheritedLevels as Record<string, unknown>[]).map(mapClassLevel) : []
+  };
+};
+
+export const saveClassLevel = async (
+  classId: string,
+  level: {
+    id?: string;
+    name: string;
+    description?: string | null;
+    levelOrder?: number;
+    color?: string | null;
+    active?: boolean;
+    objectives?: Array<{ id: string; title: string; completed?: boolean }>;
+  }
+): Promise<ProfessorClassLevel> => {
+  const isEdit = Boolean(level.id);
+  const { data } = await api.request<Record<string, unknown>>({
+    url: isEdit ? `/classes/${classId}/levels/${level.id}` : `/classes/${classId}/levels`,
+    method: isEdit ? "PUT" : "POST",
+    data: {
+      name: level.name,
+      description: level.description ?? null,
+      levelOrder: level.levelOrder ?? 0,
+      color: level.color ?? null,
+      active: level.active !== false,
+      objectives: (level.objectives ?? [])
+        .filter((objective) => objective.title.trim())
+        .map((objective) => ({ ...objective, title: objective.title.trim() }))
+    }
+  });
+  return mapClassLevel(data);
+};
+
+export const updateClassStudentLevel = async (
+  classId: string,
+  studentId: string,
+  levelId: string | null
+): Promise<void> => {
+  await api.put(`/classes/${classId}/students/${studentId}`, { levelId });
 };
 
 /** Students enrolled in a specific class. */

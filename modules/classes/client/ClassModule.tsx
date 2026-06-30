@@ -524,6 +524,19 @@ const ClassModule: React.FC<Props> = ({ view, setView, currentUser, companyId, o
     await loadDetails(selected.id); await loadAvailable(selected.id);
   };
 
+  const updateStudentLevel = async (studentId: string, levelId: string) => {
+    if (!selected) return;
+    try {
+      const res = await fetch(`/api/classes/${selected.id}/students/${studentId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ levelId: levelId || null })
+      });
+      if (!res.ok) { const b = await res.json().catch(() => ({})); throw new Error(b?.error || t('classes.errorSave')); }
+      await loadDetails(selected.id);
+    } catch (e: any) { setError(e.message || t('classes.errorSave')); }
+  };
+
   const openCreateResource = () => {
     setResourceForm({ title: '', description: '', type: typeOptions[0] || 'GENERAL_FILE', visibility: 'STAFF_ONLY', resourceUrl: '' });
     if (resourceFileRef.current) resourceFileRef.current.value = '';
@@ -1114,7 +1127,7 @@ const ClassModule: React.FC<Props> = ({ view, setView, currentUser, companyId, o
                     const lvl = enrollLevelOptions.find((l) => l.id === s.levelId)?.name;
                     const initials = [s.firstName?.[0], s.lastName?.[0]].filter(Boolean).join('').toUpperCase() || '?';
                     return (
-                      <div key={s.id} className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-3">
+                      <div key={s.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3">
                         <div className="flex items-center gap-3">
                           {s.imageUrl
                             ? <img src={mediaUrl(s.imageUrl)} alt={initials} className="size-9 rounded-full object-cover" />
@@ -1125,9 +1138,20 @@ const ClassModule: React.FC<Props> = ({ view, setView, currentUser, companyId, o
                             <p className="text-xs text-slate-400">{s.studentCode || ''}{lvl ? ` · ${lvl}` : ''}</p>
                           </div>
                         </div>
-                        <Button type="button" mode="icon" size="sm" variant="outline" className="size-8 text-destructive hover:bg-destructive/10" onClick={() => removeStudent(s.studentId)} aria-label={t('classes.removeStudent')}>
-                          <Trash2 className="size-3.5" />
-                        </Button>
+                        <div className="flex items-center gap-2">
+                          <select
+                            className="h-9 min-w-[11rem] rounded-lg border border-slate-200 bg-white px-3 text-xs text-slate-700 outline-none focus:border-red-400"
+                            value={s.levelId || ''}
+                            onChange={(e) => void updateStudentLevel(s.studentId, e.target.value)}
+                            aria-label={t('classes.level')}
+                          >
+                            <option value="">Sin nivel</option>
+                            {enrollLevelOptions.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+                          </select>
+                          <Button type="button" mode="icon" size="sm" variant="outline" className="size-8 text-destructive hover:bg-destructive/10" onClick={() => removeStudent(s.studentId)} aria-label={t('classes.removeStudent')}>
+                            <Trash2 className="size-3.5" />
+                          </Button>
+                        </div>
                       </div>
                     );
                   })}

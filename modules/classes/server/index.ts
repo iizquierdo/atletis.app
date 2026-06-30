@@ -153,6 +153,13 @@ export default function registerClassesModule({ app, pool }: ClassesModuleContex
     return Boolean(r.rows[0]);
   };
 
+  const canManageClassLevels = async (scope: RequesterScope | null, classId: string): Promise<boolean> => {
+    if (!scope) return false;
+    if (scope.isStaff) return canAccessClass(scope, classId);
+    if (scope.isProfesor) return canAccessClass(scope, classId);
+    return false;
+  };
+
   const canUseDiscipline = async (scope: RequesterScope | null, disciplineId: string): Promise<boolean> => {
     if (!scope) return false;
     if (!(await tableExists('Discipline'))) return true;
@@ -526,8 +533,7 @@ export default function registerClassesModule({ app, pool }: ClassesModuleContex
     try {
       if (!(await ensureActive())) return res.status(409).json({ error: 'Classes module is not active.' });
       const scope = await scopeOf(req);
-      if (!scope?.isStaff) return res.status(403).json({ error: 'Only staff can edit class levels.' });
-      if (!(await canAccessClass(scope, req.params.id))) return res.status(404).json({ error: 'Class not found' });
+      if (!(await canManageClassLevels(scope, req.params.id))) return res.status(403).json({ error: 'Only assigned staff can edit class levels.' });
       await ensureLevelColumns();
       const name = String(req.body?.name || '').trim();
       if (!name) return res.status(400).json({ error: 'name is required.' });
@@ -566,12 +572,11 @@ export default function registerClassesModule({ app, pool }: ClassesModuleContex
     try {
       if (!(await ensureActive())) return res.status(409).json({ error: 'Classes module is not active.' });
       const scope = await scopeOf(req);
-      if (!scope?.isStaff) return res.status(403).json({ error: 'Only staff can edit class levels.' });
+      if (!(await canManageClassLevels(scope, req.params.id))) return res.status(403).json({ error: 'Only assigned staff can edit class levels.' });
       await ensureLevelColumns();
       const existing = await pool.query('SELECT * FROM "ClassLevel" WHERE id = $1 AND "classId" = $2 LIMIT 1', [req.params.levelId, req.params.id]);
       const level = existing.rows[0];
       if (!level) return res.status(404).json({ error: 'Level not found' });
-      if (!(await canAccessClass(scope, req.params.id))) return res.status(404).json({ error: 'Class not found' });
 
       await pool.query(
         `UPDATE "ClassLevel" SET name=$1, description=$2, "levelOrder"=$3, color=$4, active=$5, "imageUrl"=$6, objectives=$7, "updatedAt"=NOW() WHERE id=$8`,
@@ -598,7 +603,7 @@ export default function registerClassesModule({ app, pool }: ClassesModuleContex
     try {
       if (!(await ensureActive())) return res.status(409).json({ error: 'Classes module is not active.' });
       const scope = await scopeOf(req);
-      if (!scope?.isStaff) return res.status(403).json({ error: 'Only staff can edit class levels.' });
+      if (!(await canManageClassLevels(scope, req.params.id))) return res.status(403).json({ error: 'Only assigned staff can edit class levels.' });
       const r = await pool.query('DELETE FROM "ClassLevel" WHERE id = $1 AND "classId" = $2', [req.params.levelId, req.params.id]);
       if (!r.rowCount) return res.status(404).json({ error: 'Level not found' });
       res.json({ success: true });
@@ -612,7 +617,7 @@ export default function registerClassesModule({ app, pool }: ClassesModuleContex
     try {
       if (!(await ensureActive())) return res.status(409).json({ error: 'Classes module is not active.' });
       const scope = await scopeOf(req);
-      if (!scope?.isStaff) return res.status(403).json({ error: 'Only staff can edit class levels.' });
+      if (!(await canManageClassLevels(scope, req.params.id))) return res.status(403).json({ error: 'Only assigned staff can edit class levels.' });
       await ensureLevelColumns();
       const level = await pool.query('SELECT * FROM "ClassLevel" WHERE id = $1 AND "classId" = $2 LIMIT 1', [req.params.levelId, req.params.id]);
       if (!level.rows[0]) return res.status(404).json({ error: 'Level not found' });
@@ -945,7 +950,7 @@ export default function registerClassesModule({ app, pool }: ClassesModuleContex
     try {
       if (!(await ensureActive())) return res.status(409).json({ error: 'Classes module is not active.' });
       const scope = await scopeOf(req);
-      if (!scope?.isStaff) return res.status(403).json({ error: 'Only staff can edit enrollment.' });
+      if (!(scope?.isStaff || scope?.isProfesor)) return res.status(403).json({ error: 'Only assigned staff can edit enrollment.' });
       if (!(await canAccessClass(scope, req.params.id))) return res.status(404).json({ error: 'Class not found' });
 
       const existing = await pool.query('SELECT * FROM "ClassStudent" WHERE "classId" = $1 AND "studentId" = $2 LIMIT 1', [req.params.id, req.params.studentId]);
@@ -956,7 +961,7 @@ export default function registerClassesModule({ app, pool }: ClassesModuleContex
         'UPDATE "ClassStudent" SET "levelId"=$1, status=$2 WHERE "classId"=$3 AND "studentId"=$4',
         [
           req.body?.levelId !== undefined ? (String(req.body.levelId).trim() || null) : row.levelId,
-          String(req.body?.status ?? row.status).trim() || row.status,
+          scope.isStaff ? (String(req.body?.status ?? row.status).trim() || row.status) : row.status,
           req.params.id, req.params.studentId
         ]
       );

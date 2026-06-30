@@ -190,6 +190,8 @@ const StudentModule: React.FC<Props> = ({ view, setView, currentUser, companyId,
 
   const [communities, setCommunities] = useState<{ id: string; name: string; imageUrl?: string | null; companyName?: string; disciplineName?: string | null; memberCount?: number; postCount?: number; active?: boolean }[]>([]);
   const [communitiesLoading, setCommunitiesLoading] = useState(false);
+  const [classLevelsByClassId, setClassLevelsByClassId] = useState<Record<string, Array<{ id: string; name: string }>>>({});
+  const [savingClassLevelId, setSavingClassLevelId] = useState<string | null>(null);
 
   const logoFileRef = useRef<HTMLInputElement>(null);
   const coverFileRef = useRef<HTMLInputElement>(null);
@@ -230,6 +232,42 @@ const StudentModule: React.FC<Props> = ({ view, setView, currentUser, companyId,
       const res = await fetch(`/api/communities?studentId=${id}`);
       setCommunities(res.ok ? await res.json() : []);
     } catch { setCommunities([]); } finally { setCommunitiesLoading(false); }
+  };
+
+  const loadClassLevelsForStudent = async (student: any) => {
+    const classes = Array.isArray(student?.classes) ? student.classes : [];
+    if (!classes.length) {
+      setClassLevelsByClassId({});
+      return;
+    }
+    const entries = await Promise.all(
+      classes.map((cl: any) =>
+        fetch(`/api/classes/${cl.classId || cl.id}`)
+          .then((res) => res.ok ? res.json() : null)
+          .then((detail) => detail ? [String(cl.classId || cl.id), (detail.ownLevels || []).map((l: any) => ({ id: l.id, name: l.name }))] as const : null)
+          .catch(() => null)
+      )
+    );
+    const next: Record<string, Array<{ id: string; name: string }>> = {};
+    entries.forEach((entry) => {
+      if (entry) next[entry[0]] = entry[1];
+    });
+    setClassLevelsByClassId(next);
+  };
+
+  const updateStudentClassLevel = async (classId: string, levelId: string) => {
+    if (!selected) return;
+    setSavingClassLevelId(classId);
+    try {
+      const res = await fetch(`/api/classes/${classId}/students/${selected.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ levelId: levelId || null })
+      });
+      if (!res.ok) { const b = await res.json().catch(() => ({})); throw new Error(b?.error || t('students.errorSave')); }
+      await loadDetails(selected.id);
+    } catch (e: any) { setError(e.message || t('students.errorSave')); }
+    finally { setSavingClassLevelId(null); }
   };
 
   const uploadStudentImage = async (kind: 'logo' | 'cover', file: File | undefined) => {
@@ -276,6 +314,7 @@ const StudentModule: React.FC<Props> = ({ view, setView, currentUser, companyId,
       if (!res.ok) throw new Error();
       const data = await res.json();
       setSelected(data);
+      await loadClassLevelsForStudent(data);
       onSubTitleChange?.(`${data.firstName} ${data.lastName}`);
       const [rep, conv, par] = await Promise.all([
         fetch(`/api/students/${id}/reports`).then((r) => (r.ok ? r.json() : [])),
@@ -749,6 +788,20 @@ const StudentModule: React.FC<Props> = ({ view, setView, currentUser, companyId,
                           <span>{teachers.map((t) => t.name).join(', ')}</span>
                         </div>
                       )}
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-semibold text-slate-500">Nivel</span>
+                        <select
+                          className="min-w-[12rem] rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 outline-none focus:border-red-400 disabled:opacity-50"
+                          value={cl.levelId || ''}
+                          disabled={savingClassLevelId === String(cl.classId || cl.id)}
+                          onChange={(e) => void updateStudentClassLevel(String(cl.classId || cl.id), e.target.value)}
+                        >
+                          <option value="">Sin nivel</option>
+                          {(classLevelsByClassId[String(cl.classId || cl.id)] || []).map((level) => (
+                            <option key={level.id} value={level.id}>{level.name}</option>
+                          ))}
+                        </select>
+                      </div>
                     </div>
                   );
                 })}

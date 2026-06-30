@@ -55,6 +55,17 @@ export interface StudentTutorRef {
   email?: string | null;
 }
 
+export interface StudentClassSummary {
+  id: string;
+  classId?: string;
+  name: string;
+  disciplineId?: string | null;
+  disciplineName?: string | null;
+  levelId?: string | null;
+  levelName?: string | null;
+  status?: string;
+}
+
 export interface StudentSummary {
   id: string;
   firstName: string;
@@ -67,6 +78,7 @@ export interface StudentSummary {
   email?: string | null;
   imageUrl?: string | null;
   tutors?: StudentTutorRef[];
+  classes?: StudentClassSummary[];
 }
 
 export type CommunityPostStatus = "DRAFT" | "PUBLISHED" | "UNPUBLISHED" | "ARCHIVED";
@@ -261,6 +273,28 @@ export interface ProfessorClass {
   studentCount: number;
   sede?: SedeRef | null;
   schedules?: ClassScheduleSlot[];
+}
+
+export interface ClassLevelObjective {
+  id: string;
+  title: string;
+  completed?: boolean;
+}
+
+export interface ProfessorClassLevel {
+  id: string;
+  name: string;
+  description?: string | null;
+  levelOrder: number;
+  color?: string | null;
+  active?: boolean;
+  imageUrl?: string | null;
+  objectives?: ClassLevelObjective[];
+}
+
+export interface ProfessorClassDetail extends ProfessorClass {
+  ownLevels: ProfessorClassLevel[];
+  inheritedLevels?: ProfessorClassLevel[];
 }
 
 export interface AttendanceRecord {
