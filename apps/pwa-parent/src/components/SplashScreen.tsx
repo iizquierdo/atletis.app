@@ -7,6 +7,8 @@ interface Props {
   onDone: () => void;
 }
 
+const PARTICLE_SIZE_MULTIPLIER = 2;
+
 const PARTICLES = [
   { icon: "pool",               x: 7,  size: 30, opacity: 0.13, dur: 13, delay: 0    },
   { icon: "sports_soccer",      x: 19, size: 20, opacity: 0.09, dur: 10, delay: -4   },
@@ -22,6 +24,20 @@ const PARTICLES = [
   { icon: "sports_handball",    x: 24, size: 18, opacity: 0.10, dur: 14, delay: -9   },
   { icon: "snowboarding",       x: 82, size: 26, opacity: 0.08, dur: 12, delay: -0.5 },
   { icon: "sports_martial_arts",x: 95, size: 20, opacity: 0.11, dur: 10, delay: -13  },
+  { icon: "sports_baseball",     x: 3,  size: 18, opacity: 0.08, dur: 11, delay: -5.5 },
+  { icon: "sports_football",     x: 15, size: 28, opacity: 0.11, dur: 16, delay: -12  },
+  { icon: "sports_rugby",        x: 29, size: 24, opacity: 0.09, dur: 12, delay: -2   },
+  { icon: "sports_cricket",      x: 38, size: 20, opacity: 0.13, dur: 10, delay: -9.5 },
+  { icon: "sports_hockey",       x: 52, size: 30, opacity: 0.10, dur: 14, delay: -4.5 },
+  { icon: "sports_kabaddi",      x: 66, size: 22, opacity: 0.12, dur: 13, delay: -7.5 },
+  { icon: "rowing",              x: 74, size: 18, opacity: 0.09, dur:  9, delay: -1   },
+  { icon: "scuba_diving",        x: 91, size: 32, opacity: 0.08, dur: 15, delay: -10  },
+  { icon: "sailing",             x: 10, size: 22, opacity: 0.12, dur: 10, delay: -14  },
+  { icon: "downhill_skiing",     x: 21, size: 26, opacity: 0.09, dur: 12, delay: -6.5 },
+  { icon: "sports_motorsports",  x: 45, size: 18, opacity: 0.11, dur: 11, delay: -3.5 },
+  { icon: "sports_score",        x: 59, size: 24, opacity: 0.08, dur: 16, delay: -15  },
+  { icon: "hiking",              x: 84, size: 20, opacity: 0.12, dur: 10, delay: -8.5 },
+  { icon: "self_improvement",    x: 98, size: 28, opacity: 0.09, dur: 13, delay: -11.5 },
 ];
 
 export const SplashScreen = ({ onDone }: Props) => {
@@ -61,7 +77,7 @@ export const SplashScreen = ({ onDone }: Props) => {
           style={{
             left: `${p.x}%`,
             bottom: "-10%",
-            fontSize: `${p.size}px`,
+            fontSize: `${p.size * PARTICLE_SIZE_MULTIPLIER}px`,
             color: "white",
             opacity: p.opacity,
             animation: `splash-rise ${p.dur}s linear ${p.delay}s infinite`,

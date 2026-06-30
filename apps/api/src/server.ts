@@ -2992,6 +2992,7 @@ app.post('/api/auth/register-parent', async (req, res) => {
             ]
         );
 
+        let activationEmailSent = true;
         try {
             const { provider, config: smtpConfig } = await loadCanonicalOutboundMailConfig();
             const activationUrl = buildParentAppUrl(req, `/activate-account?token=${encodeURIComponent(activationToken)}`);
@@ -3000,14 +3001,16 @@ app.post('/api/auth/register-parent', async (req, res) => {
             const htmlBody = `<p>Hola ${name},</p><p>Ya creamos tu cuenta familiar.</p><p><a href="${activationUrl}">Activar cuenta</a></p><p>Este enlace expira en 24 horas.</p><p>Si no solicitaste esta cuenta, ignora este mensaje.</p>`;
             await sendEmailWithConfig(provider, smtpConfig, email, subject, textBody, htmlBody);
         } catch (mailError) {
-            await pool.query('DELETE FROM "User" WHERE id = $1', [id]);
-            throw mailError;
+            activationEmailSent = false;
+            console.error('Failed to send parent activation email:', mailError);
         }
 
         res.status(201).json({
             success: true,
-            status: 'pending_activation',
-            message: 'Te enviamos un email para activar tu cuenta.'
+            status: activationEmailSent ? 'pending_activation' : 'pending_activation_email_failed',
+            message: activationEmailSent
+                ? 'Te enviamos un email para activar tu cuenta.'
+                : 'Creamos tu cuenta, pero no pudimos enviar el email de activacion. Pedi a un administrador que active tu cuenta o revise la configuracion SMTP.'
         });
     } catch (error: any) {
         console.error('Error in POST /api/auth/register-parent:', error);
