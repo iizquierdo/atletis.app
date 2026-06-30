@@ -4,7 +4,7 @@ import { MaterialIcon } from "./MaterialIcon";
 import { useAuth } from "../context/AuthContext";
 import { resolveMediaUrl } from "../lib/media";
 import { fetchPublicBranding } from "../lib/data";
-import { applyDocumentTitle, readBrandingFromStorage, saveBrandingToStorage } from "../lib/branding";
+import { applyDocumentTitle, applyFavicon, readBrandingFromStorage, saveBrandingToStorage } from "../lib/branding";
 import { applyThemeFromSettings } from "../lib/theme";
 
 interface NavigationItem {
@@ -56,6 +56,7 @@ export const AppLayout = () => {
           appName: data.appName || readBrandingFromStorage().appName,
           logoUrl: data.logoUrl ?? null,
           isologoUrl: data.isologoUrl ?? null,
+          faviconUrl: data.faviconUrl ?? null,
           loginBackgroundUrl: data.loginBackgroundUrl ?? null
         });
         setLogoLoadFailed(false);
@@ -70,7 +71,8 @@ export const AppLayout = () => {
 
   useEffect(() => {
     applyDocumentTitle(branding.appName);
-  }, [branding.appName]);
+    applyFavicon(branding.faviconUrl);
+  }, [branding.appName, branding.faviconUrl]);
 
   // Close menu when clicking outside
   useEffect(() => {

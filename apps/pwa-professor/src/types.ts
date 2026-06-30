@@ -248,6 +248,7 @@ export interface GlobalSettings {
   appName: string;
   logoUrl?: string | null;
   isologoUrl?: string | null;
+  faviconUrl?: string | null;
   loginBackgroundUrl?: string | null;
   primaryColor: string;
   secondaryColor: string;

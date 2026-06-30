@@ -6,6 +6,7 @@ import { extractErrorMessage } from "../lib/api";
 import { fetchPublicBranding } from "../lib/data";
 import {
   applyDocumentTitle,
+  applyFavicon,
   readBrandingFromStorage,
   saveBrandingToStorage
 } from "../lib/branding";
@@ -43,6 +44,7 @@ export const LoginPage = () => {
           appName: data.appName,
           logoUrl: data.logoUrl ?? null,
           isologoUrl: data.isologoUrl ?? null,
+          faviconUrl: data.faviconUrl ?? null,
           loginBackgroundUrl: data.loginBackgroundUrl ?? null
         });
         setLogoLoadFailed(false);
@@ -61,7 +63,8 @@ export const LoginPage = () => {
 
   useEffect(() => {
     applyDocumentTitle(branding.appName);
-  }, [branding.appName]);
+    applyFavicon(branding.faviconUrl);
+  }, [branding.appName, branding.faviconUrl]);
 
   const canSubmit = useMemo(
     () => !loading && email.trim().length > 0 && password.trim().length > 0,

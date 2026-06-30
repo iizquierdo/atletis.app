@@ -6,6 +6,7 @@ export interface BrandingSnapshot {
   appName: string;
   logoUrl: string | null;
   isologoUrl: string | null;
+  faviconUrl: string | null;
   loginBackgroundUrl: string | null;
 }
 
@@ -13,6 +14,7 @@ export const DEFAULT_BRANDING: BrandingSnapshot = {
   appName: "Ecosistema Deporbas",
   logoUrl: "https://deporbas.com/wp-content/uploads/2024/08/cropped-cropped-logo-contorno-blanco-192x192.png",
   isologoUrl: null,
+  faviconUrl: null,
   loginBackgroundUrl: null
 };
 
@@ -31,6 +33,7 @@ export const readBrandingFromStorage = (): BrandingSnapshot => {
       appName: str(parsed.appName) ?? DEFAULT_BRANDING.appName,
       logoUrl: str(parsed.logoUrl) ?? DEFAULT_BRANDING.logoUrl,
       isologoUrl: str(parsed.isologoUrl),
+      faviconUrl: str(parsed.faviconUrl) ?? str(parsed.isologoUrl) ?? str(parsed.logoUrl) ?? DEFAULT_BRANDING.logoUrl,
       loginBackgroundUrl: str(parsed.loginBackgroundUrl)
     };
   } catch {
@@ -39,7 +42,7 @@ export const readBrandingFromStorage = (): BrandingSnapshot => {
 };
 
 export const saveBrandingToStorage = (
-  settings?: Pick<GlobalSettings, "appName" | "logoUrl" | "isologoUrl" | "loginBackgroundUrl"> | null
+  settings?: Pick<GlobalSettings, "appName" | "logoUrl" | "isologoUrl" | "faviconUrl" | "loginBackgroundUrl"> | null
 ) => {
   if (!settings?.appName?.trim()) return;
 
@@ -47,6 +50,7 @@ export const saveBrandingToStorage = (
     appName: settings.appName,
     logoUrl: settings.logoUrl ?? null,
     isologoUrl: settings.isologoUrl ?? null,
+    faviconUrl: settings.faviconUrl ?? settings.isologoUrl ?? settings.logoUrl ?? null,
     loginBackgroundUrl: settings.loginBackgroundUrl ?? null
   };
 
@@ -55,4 +59,17 @@ export const saveBrandingToStorage = (
 
 export const applyDocumentTitle = (appName: string) => {
   document.title = `${appName} | Familias`;
+};
+
+export const applyFavicon = (faviconUrl?: string | null) => {
+  const href = str(faviconUrl);
+  if (!href) return;
+
+  let link = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
+  if (!link) {
+    link = document.createElement("link");
+    link.rel = "icon";
+    document.head.appendChild(link);
+  }
+  link.href = href;
 };

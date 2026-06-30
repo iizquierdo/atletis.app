@@ -6,8 +6,10 @@ import "./index.css";
 import { AuthProvider } from "./context/AuthContext";
 import { SplashScreen } from "./components/SplashScreen";
 import { hydrateThemeFromStorage } from "./lib/theme";
+import { applyFavicon, readBrandingFromStorage } from "./lib/branding";
 
 hydrateThemeFromStorage();
+applyFavicon(readBrandingFromStorage().faviconUrl);
 
 const Root = () => {
   const [splashDone, setSplashDone] = useState(false);

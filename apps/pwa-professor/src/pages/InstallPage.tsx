@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { MaterialIcon } from "../components/MaterialIcon";
 import { fetchPublicBranding } from "../lib/data";
-import { applyDocumentTitle, saveBrandingToStorage } from "../lib/branding";
+import { applyDocumentTitle, applyFavicon, saveBrandingToStorage } from "../lib/branding";
 import { applyThemeFromSettings } from "../lib/theme";
 import { setTenantId } from "../lib/tenant";
 
@@ -29,6 +29,7 @@ export const InstallPage = () => {
           applyThemeFromSettings(data);
           saveBrandingToStorage(data);
           applyDocumentTitle(data.appName);
+          applyFavicon(data.faviconUrl);
           setAppName(data.appName);
         }
         setStatus("success");

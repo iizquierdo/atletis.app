@@ -3,7 +3,7 @@ import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
 import { MaterialIcon } from "./MaterialIcon";
 import { useAuth } from "../context/AuthContext";
 import { fetchPublicBranding } from "../lib/data";
-import { applyDocumentTitle, readBrandingFromStorage, saveBrandingToStorage } from "../lib/branding";
+import { applyDocumentTitle, applyFavicon, readBrandingFromStorage, saveBrandingToStorage } from "../lib/branding";
 import { applyThemeFromSettings } from "../lib/theme";
 
 interface NavigationItem {
@@ -41,6 +41,7 @@ export const AppLayout = () => {
           appName: data.appName || readBrandingFromStorage().appName,
           logoUrl: data.logoUrl ?? null,
           isologoUrl: data.isologoUrl ?? null,
+          faviconUrl: data.faviconUrl ?? null,
           loginBackgroundUrl: data.loginBackgroundUrl ?? null
         });
         setLogoLoadFailed(false);
@@ -58,7 +59,8 @@ export const AppLayout = () => {
 
   useEffect(() => {
     applyDocumentTitle(branding.appName);
-  }, [branding.appName]);
+    applyFavicon(branding.faviconUrl);
+  }, [branding.appName, branding.faviconUrl]);
 
   return (
     <div className="relative min-h-screen bg-slate-50">
