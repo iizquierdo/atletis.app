@@ -16,6 +16,7 @@ const App = () => {
   return (
     <Routes>
       <Route path="/install/:orgId" element={<InstallPage />} />
+      <Route path="/installl/:orgId" element={<InstallPage />} />
       <Route path="/login" element={<LoginPage />} />
 
       <Route element={<ProtectedRoute />}>

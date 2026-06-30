@@ -17,6 +17,7 @@ const App = () => {
   return (
     <Routes>
       <Route path="/install/:orgId" element={<InstallPage />} />
+      <Route path="/installl/:orgId" element={<InstallPage />} />
       <Route path="/activate-account" element={<ActivateAccountPage />} />
       <Route path="/login" element={<LoginPage />} />
 
