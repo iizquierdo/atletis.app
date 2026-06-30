@@ -31,11 +31,18 @@ const formatDate = (v?: string | null) => {
 
 const extractYouTubeId = (v?: string | null) => {
   if (!v) return null;
+  const raw = v.trim();
+  const iframeSrc = raw.match(/src=["']([^"']+)["']/i)?.[1];
+  const value = iframeSrc || raw;
+  const directMatch = value.match(
+    /(?:youtube\.com\/(?:watch\?(?:.*&)?v=|embed\/|shorts\/)|youtube-nocookie\.com\/embed\/|youtu\.be\/)([a-zA-Z0-9_-]{11})/
+  );
+  if (directMatch?.[1]) return directMatch[1];
   try {
-    const url = new URL(v);
+    const url = new URL(value);
     const host = url.hostname.replace(/^www\./, "");
     if (host === "youtu.be") return url.pathname.replace("/", "").trim() || null;
-    if (host === "youtube.com" || host === "m.youtube.com") {
+    if (host === "youtube.com" || host === "m.youtube.com" || host === "youtube-nocookie.com") {
       if (url.pathname === "/watch") return url.searchParams.get("v");
       if (url.pathname.startsWith("/embed/"))
         return url.pathname.split("/embed/")[1]?.split("/")[0] || null;

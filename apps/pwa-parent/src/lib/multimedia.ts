@@ -18,6 +18,18 @@ export interface ResourceVisuals {
   kind: MediaKind;
 }
 
+const extractYouTubeId = (v?: string | null): string | null => {
+  const value = String(v || "").trim();
+  if (!value) return null;
+  const iframeSrc = value.match(/src=["']([^"']+)["']/i)?.[1];
+  const raw = iframeSrc || value;
+  return (
+    raw.match(
+      /(?:youtube\.com\/(?:watch\?(?:.*&)?v=|embed\/|shorts\/)|youtube-nocookie\.com\/embed\/|youtu\.be\/)([a-zA-Z0-9_-]{11})/
+    )?.[1] ?? null
+  );
+};
+
 export const collectMultimediaScope = (students: StudentSummary[]) => {
   const disciplineAssignments = students
     .flatMap((s) => s.disciplines ?? [])
@@ -87,16 +99,19 @@ export const getResourceVisuals = (
     resource.source === "class"
       ? scope.classMediaById[resource.classId]
       : scope.disciplineMediaById[resource.disciplineId];
+  const youtubeId = extractYouTubeId(resource.resourceUrl);
 
   const resourceImage =
     (resource.thumbnailUrl && isDisplayableImageUrl(resource.thumbnailUrl) ? resource.thumbnailUrl : null) ||
-    (resource.resourceUrl && isDisplayableImageUrl(resource.resourceUrl) ? resource.resourceUrl : null);
+    (resource.resourceUrl && isDisplayableImageUrl(resource.resourceUrl) ? resource.resourceUrl : null) ||
+    (youtubeId ? `https://img.youtube.com/vi/${youtubeId}/hqdefault.jpg` : null);
 
   const coverUrl = context?.coverUrl || resourceImage;
   const imageUrl = context?.imageUrl || null;
   const previewUrl = coverUrl || imageUrl;
 
   const kind =
+    youtubeId ||
     resource.type === "EXERCISE_VIDEO" ||
     (resource.resourceUrl && isDisplayableVideoUrl(resource.resourceUrl))
       ? "video"
